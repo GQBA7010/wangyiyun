@@ -112,7 +112,7 @@ export default function App() {
   if (booting) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-mesh">
-        <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/15 border-t-brand-500" />
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500" />
       </div>
     )
   }
@@ -138,22 +138,22 @@ export default function App() {
         {/* header */}
         <header className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-xs text-brand-300">
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-medium text-brand-600">
               <Sparkles className="h-3.5 w-3.5" /> 懒人自动化 · 全自动后台运行
             </div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
               Lumen
-              <span className="bg-gradient-to-r from-brand-400 to-accent-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-brand-600 to-accent-500 bg-clip-text text-transparent">
                 {' '}
                 控制台
               </span>
             </h1>
-            <p className="mt-1.5 text-sm text-slate-400">
+            <p className="mt-1.5 text-sm text-slate-500">
               网易云音乐 · 自动签到 / 自动听歌打卡，一处开关，全程托管。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 self-start">
-            <span className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300 sm:inline-flex">
+            <span className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-soft sm:inline-flex">
               <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-[11px] font-bold text-white">
                 {account.username.slice(0, 1).toUpperCase()}
               </span>
@@ -240,7 +240,7 @@ export default function App() {
           </div>
         )}
 
-        <footer className="mt-16 border-t border-white/[0.06] pt-6 text-center text-xs text-slate-600">
+        <footer className="mt-16 border-t border-slate-200 pt-6 text-center text-xs text-slate-400">
           Lumen · 仅供个人学习与自动化使用 · 数据按账号隔离，登录态加密存储于服务器
         </footer>
       </div>
@@ -281,13 +281,13 @@ function StatCard({
   value: number | string
 }) {
   return (
-    <div className="glass flex items-center gap-4 p-5">
-      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500/25 to-accent-500/25 text-brand-300">
+    <div className="glass card-hover flex items-center gap-4 p-5">
+      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-brand-50 to-accent-50 text-brand-600 ring-1 ring-brand-100">
         {icon}
       </div>
       <div>
-        <p className="text-2xl font-bold text-white">{value}</p>
-        <p className="text-xs text-slate-400">{label}</p>
+        <p className="text-2xl font-bold text-slate-900">{value}</p>
+        <p className="text-xs text-slate-500">{label}</p>
       </div>
     </div>
   )
@@ -296,12 +296,12 @@ function StatCard({
 function EmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <div className="glass flex flex-col items-center gap-5 px-6 py-20 text-center">
-      <div className="flex h-20 w-20 animate-float items-center justify-center rounded-3xl bg-gradient-to-br from-brand-500/30 to-accent-500/30">
-        <Users className="h-9 w-9 text-brand-300" />
+      <div className="flex h-20 w-20 animate-float items-center justify-center rounded-3xl bg-gradient-to-br from-brand-50 to-accent-50 ring-1 ring-brand-100">
+        <Users className="h-9 w-9 text-brand-500" />
       </div>
       <div>
-        <h3 className="text-xl font-bold text-white">还没有账号</h3>
-        <p className="mx-auto mt-1.5 max-w-sm text-sm text-slate-400">
+        <h3 className="text-xl font-bold text-slate-900">还没有账号</h3>
+        <p className="mx-auto mt-1.5 max-w-sm text-sm text-slate-500">
           扫码登录你的网易云账号，开启自动签到与自动听歌打卡，剩下的交给后台托管。
         </p>
       </div>

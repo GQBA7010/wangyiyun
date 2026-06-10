@@ -67,7 +67,7 @@ export function AccountCard({
 
   return (
     <div
-      className="glass flex flex-col gap-5 p-6 shadow-card animate-fade-up"
+      className="glass card-hover flex flex-col gap-5 p-6 shadow-card animate-fade-up"
       style={{ animationDelay: `${index * 70}ms` }}
     >
       {/* header */}
@@ -76,7 +76,7 @@ export function AccountCard({
           <img
             src={user.avatarUrl || 'https://p1.music.126.net/VnZiScyynLG7atLIZ2YPkw==/18686200114669622.jpg'}
             alt=""
-            className="h-14 w-14 rounded-2xl object-cover ring-1 ring-white/15"
+            className="h-14 w-14 rounded-2xl object-cover ring-1 ring-slate-200"
           />
           <span className="absolute -bottom-1.5 -right-1.5 rounded-lg bg-brand-500 px-1.5 py-0.5 text-[10px] font-bold text-white shadow">
             Lv.{user.level ?? 0}
@@ -84,16 +84,16 @@ export function AccountCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-lg font-bold text-white">
+            <h3 className="truncate text-lg font-bold text-slate-900">
               {user.nickname || `用户 ${user.uid}`}
             </h3>
             {user.status === 'expired' && (
-              <span className="flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-400">
+              <span className="flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">
                 <AlertTriangle className="h-3 w-3" /> 已过期
               </span>
             )}
             {user.status === 'active' && (
-              <span className="flex items-center gap-1 rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-semibold text-accent-400">
+              <span className="flex items-center gap-1 rounded-full bg-accent-50 px-2 py-0.5 text-[10px] font-semibold text-accent-600">
                 <ShieldCheck className="h-3 w-3" /> 在线
               </span>
             )}
@@ -102,7 +102,7 @@ export function AccountCard({
         </div>
         <button
           onClick={() => onRemove(user.uid)}
-          className="rounded-lg p-2 text-slate-500 transition hover:bg-rose-500/10 hover:text-rose-400"
+          className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-500"
           title="移除账号"
         >
           <Trash2 className="h-4 w-4" />
@@ -112,15 +112,15 @@ export function AccountCard({
       {/* listen progress */}
       <div>
         <div className="mb-2 flex items-center justify-between text-xs">
-          <span className="flex items-center gap-1.5 text-slate-400">
+          <span className="flex items-center gap-1.5 text-slate-500">
             <Music2 className="h-3.5 w-3.5" /> 累计听歌量
           </span>
-          <span className="font-semibold text-white">
+          <span className="font-semibold text-slate-900">
             {formatNumber(listened)}{' '}
             <span className="text-slate-500">/ {formatNumber(LEVEL_TARGET)}</span>
           </span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-white/[0.06]">
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
           <div
             className="h-full rounded-full bg-gradient-to-r from-brand-500 to-accent-500 transition-all duration-700"
             style={{ width: `${progress}%` }}
@@ -129,26 +129,26 @@ export function AccountCard({
       </div>
 
       {/* automation toggles */}
-      <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+      <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
         <ToggleRow
-          icon={<CalendarCheck className="h-4 w-4 text-brand-400" />}
+          icon={<CalendarCheck className="h-4 w-4 text-brand-500" />}
           title="自动签到"
           desc={`上次：${user.lastSignin?.message ?? '从未执行'} · ${timeAgo(user.lastSignin?.at)}`}
           checked={user.settings.autoSignin}
           onChange={(v) => patchSettings({ autoSignin: v })}
         />
-        <div className="h-px bg-white/[0.06]" />
+        <div className="h-px bg-slate-200" />
         <ToggleRow
-          icon={<Headphones className="h-4 w-4 text-accent-400" />}
+          icon={<Headphones className="h-4 w-4 text-accent-500" />}
           title="自动听歌打卡"
           desc={`上次：${user.lastScrobble?.message ?? '从未执行'} · ${timeAgo(user.lastScrobble?.at)}`}
           checked={user.settings.autoScrobble}
           onChange={(v) => patchSettings({ autoScrobble: v })}
         />
 
-        <div className="h-px bg-white/[0.06]" />
+        <div className="h-px bg-slate-200" />
         <ToggleRow
-          icon={<Gift className="h-4 w-4 text-amber-400" />}
+          icon={<Gift className="h-4 w-4 text-amber-500" />}
           title="自动云贝任务"
           desc={`上次：${user.lastYunbei?.message?.slice(0, 40) ?? '从未执行'}${user.lastYunbei?.message && user.lastYunbei.message.length > 40 ? '…' : ''} · ${timeAgo(user.lastYunbei?.at)}`}
           checked={user.settings.autoTasks}
@@ -157,7 +157,7 @@ export function AccountCard({
 
         {user.settings.autoScrobble && (
           <div className="flex items-center justify-between pt-1">
-            <span className="text-xs text-slate-400">每次打卡歌曲数（去重）</span>
+            <span className="text-xs text-slate-500">每次打卡歌曲数（去重）</span>
             <input
               type="number"
               min={1}
@@ -177,7 +177,7 @@ export function AccountCard({
                   scrobbleCount: Math.max(1, Math.min(500, Number(e.target.value) || 300)),
                 })
               }
-              className="w-20 rounded-lg border border-white/10 bg-ink-900 px-2.5 py-1.5 text-right text-sm text-white outline-none focus:border-brand-500"
+              className="w-20 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-right text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15"
             />
           </div>
         )}
@@ -221,7 +221,7 @@ export function AccountCard({
       <div>
         <button
           onClick={() => setShowLogs((s) => !s)}
-          className="flex w-full items-center justify-between text-xs text-slate-400 transition hover:text-slate-200"
+          className="flex w-full items-center justify-between text-xs text-slate-500 transition-colors hover:text-slate-800"
         >
           <span>运行日志（{user.logs?.length ?? 0}）</span>
           <ChevronDown
@@ -234,21 +234,21 @@ export function AccountCard({
               user.logs.map((log, i) => (
                 <div
                   key={i}
-                  className="flex items-start gap-2 rounded-lg bg-white/[0.02] px-3 py-2 text-xs"
+                  className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs"
                 >
                   <span
                     className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
-                      log.ok ? 'bg-accent-400' : 'bg-rose-400'
+                      log.ok ? 'bg-accent-500' : 'bg-rose-500'
                     }`}
                   />
                   <div className="min-w-0">
-                    <p className="text-slate-300">{log.message}</p>
+                    <p className="text-slate-700">{log.message}</p>
                     <p className="text-[10px] text-slate-500">{timeAgo(log.at)}</p>
                   </div>
                 </div>
               ))
             ) : (
-              <p className="py-2 text-center text-xs text-slate-600">暂无日志</p>
+              <p className="py-2 text-center text-xs text-slate-400">暂无日志</p>
             )}
           </div>
         )}
@@ -272,11 +272,11 @@ function ToggleRow({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.04]">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white ring-1 ring-slate-200">
         {icon}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-white">{title}</p>
+        <p className="text-sm font-semibold text-slate-900">{title}</p>
         <p className="truncate text-[11px] text-slate-500">{desc}</p>
       </div>
       <Toggle checked={checked} onChange={onChange} />

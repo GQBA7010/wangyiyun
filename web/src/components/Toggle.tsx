@@ -14,8 +14,8 @@ export function Toggle({ checked, onChange, disabled }: ToggleProps) {
       onClick={() => onChange(!checked)}
       className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-300 disabled:opacity-50 ${
         checked
-          ? 'bg-gradient-to-r from-brand-500 to-accent-500'
-          : 'bg-white/10'
+          ? 'bg-gradient-to-r from-brand-500 to-accent-500 shadow-[0_4px_12px_-4px_rgba(99,102,241,0.6)]'
+          : 'bg-slate-200'
       }`}
     >
       <span

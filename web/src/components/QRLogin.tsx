@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import QRCode from 'qrcode'
 import { Loader2, RefreshCw, ScanLine, X } from 'lucide-react'
 import { api, type User } from '../lib/api'
+import { Modal } from './Modal'
 
 interface QRLoginProps {
   onClose: () => void
@@ -38,7 +39,7 @@ export function QRLogin({ onClose, onSuccess }: QRLoginProps) {
         await QRCode.toDataURL(qrurl, {
           margin: 1,
           width: 240,
-          color: { dark: '#0c0f1a', light: '#ffffff' },
+          color: { dark: '#0f172a', light: '#ffffff' },
         }),
       )
       setStatus({ kind: 'waiting' })
@@ -70,69 +71,67 @@ export function QRLogin({ onClose, onSuccess }: QRLoginProps) {
   }, [start])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-ink-950/80 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div className="glass relative w-full max-w-sm animate-fade-up p-7 shadow-card">
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 text-slate-400 transition hover:text-white"
-        >
-          <X className="h-5 w-5" />
-        </button>
+    <Modal onClose={onClose} className="max-w-sm">
+      {(close) => (
+        <div className="glass p-7 shadow-card">
+          <button
+            onClick={close}
+            className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X className="h-5 w-5" />
+          </button>
 
-        <div className="mb-1 flex items-center gap-2 text-brand-400">
-          <ScanLine className="h-5 w-5" />
-          <span className="text-sm font-semibold">扫码登录</span>
+          <div className="mb-1 flex items-center gap-2 text-brand-600">
+            <ScanLine className="h-5 w-5" />
+            <span className="text-sm font-semibold">扫码登录</span>
+          </div>
+          <h2 className="mb-5 text-xl font-bold text-slate-900">添加网易云账号</h2>
+
+          <div className="relative mx-auto flex h-[264px] w-[264px] items-center justify-center rounded-2xl border border-slate-200 bg-white p-3 shadow-soft">
+            {dataUrl && (status.kind === 'waiting' || status.kind === 'scanned') ? (
+              <img src={dataUrl} alt="登录二维码" className="h-full w-full rounded-lg" />
+            ) : (
+              <div className="flex flex-col items-center gap-3 text-slate-400">
+                <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
+              </div>
+            )}
+
+            {status.kind === 'scanned' && (
+              <div className="absolute inset-3 flex flex-col items-center justify-center gap-3 rounded-lg bg-white/95 text-center backdrop-blur-sm">
+                {status.avatarUrl && (
+                  <img
+                    src={status.avatarUrl}
+                    alt=""
+                    className="h-16 w-16 rounded-full ring-2 ring-brand-500"
+                  />
+                )}
+                <p className="text-sm font-semibold text-slate-900">
+                  {status.nickname || '已扫码'}
+                </p>
+                <p className="text-xs font-medium text-accent-600">请在手机上确认登录</p>
+              </div>
+            )}
+
+            {status.kind === 'expired' && (
+              <div className="absolute inset-3 flex flex-col items-center justify-center gap-3 rounded-lg bg-white/95 backdrop-blur-sm">
+                <p className="text-sm text-slate-500">二维码已过期</p>
+                <button onClick={start} className="btn-ghost">
+                  <RefreshCw className="h-4 w-4" /> 刷新
+                </button>
+              </div>
+            )}
+          </div>
+
+          <p className="mt-5 text-center text-sm text-slate-500">
+            {status.kind === 'waiting' && '打开网易云音乐 App，扫描二维码登录'}
+            {status.kind === 'loading' && '正在生成二维码…'}
+            {status.kind === 'scanned' && '扫码成功，等待确认'}
+            {status.kind === 'error' && (
+              <span className="text-rose-500">{status.message}</span>
+            )}
+          </p>
         </div>
-        <h2 className="mb-5 text-xl font-bold text-white">添加网易云账号</h2>
-
-        <div className="relative mx-auto flex h-[264px] w-[264px] items-center justify-center rounded-2xl border border-white/10 bg-white p-3">
-          {dataUrl && (status.kind === 'waiting' || status.kind === 'scanned') ? (
-            <img src={dataUrl} alt="登录二维码" className="h-full w-full rounded-lg" />
-          ) : (
-            <div className="flex flex-col items-center gap-3 text-slate-500">
-              <Loader2 className="h-8 w-8 animate-spin text-brand-500" />
-            </div>
-          )}
-
-          {status.kind === 'scanned' && (
-            <div className="absolute inset-3 flex flex-col items-center justify-center gap-3 rounded-lg bg-ink-900/95 text-center">
-              {status.avatarUrl && (
-                <img
-                  src={status.avatarUrl}
-                  alt=""
-                  className="h-16 w-16 rounded-full ring-2 ring-brand-500"
-                />
-              )}
-              <p className="text-sm font-semibold text-white">
-                {status.nickname || '已扫码'}
-              </p>
-              <p className="text-xs text-accent-400">请在手机上确认登录</p>
-            </div>
-          )}
-
-          {status.kind === 'expired' && (
-            <div className="absolute inset-3 flex flex-col items-center justify-center gap-3 rounded-lg bg-ink-900/95">
-              <p className="text-sm text-slate-300">二维码已过期</p>
-              <button onClick={start} className="btn-ghost">
-                <RefreshCw className="h-4 w-4" /> 刷新
-              </button>
-            </div>
-          )}
-        </div>
-
-        <p className="mt-5 text-center text-sm text-slate-400">
-          {status.kind === 'waiting' && '打开网易云音乐 App，扫描二维码登录'}
-          {status.kind === 'loading' && '正在生成二维码…'}
-          {status.kind === 'scanned' && '扫码成功，等待确认'}
-          {status.kind === 'error' && (
-            <span className="text-rose-400">{status.message}</span>
-          )}
-        </p>
-      </div>
-    </div>
+      )}
+    </Modal>
   )
 }

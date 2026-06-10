@@ -45,21 +45,21 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-brand-500 to-accent-500 shadow-glow">
             <Music4 className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">
+          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
             Lumen
-            <span className="bg-gradient-to-r from-brand-400 to-accent-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-brand-600 to-accent-500 bg-clip-text text-transparent">
               {' '}
               控制台
             </span>
           </h1>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-slate-500">
             网易云音乐自动化托管 · 注册即可开始
           </p>
         </div>
 
         <div className="glass p-7 shadow-card">
           {/* tabs */}
-          <div className="mb-6 grid grid-cols-2 gap-1 rounded-xl bg-white/[0.04] p-1">
+          <div className="mb-6 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
             <TabButton active={mode === 'login'} onClick={() => switchMode('login')}>
               <LogIn className="h-4 w-4" /> 登录
             </TabButton>
@@ -96,7 +96,7 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
             </Field>
 
             {error && (
-              <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-300">
+              <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">
                 {error}
               </p>
             )}
@@ -114,11 +114,11 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
           </form>
 
           {!allowRegistration && mode === 'login' && (
-            <p className="mt-4 text-center text-xs text-slate-500">本站暂未开放注册</p>
+            <p className="mt-4 text-center text-xs text-slate-400">本站暂未开放注册</p>
           )}
         </div>
 
-        <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-slate-600">
+        <p className="mt-6 flex items-center justify-center gap-1.5 text-center text-xs text-slate-400">
           <Lock className="h-3 w-3" />
           数据按账号隔离 · 登录态加密存储于服务器
         </p>
@@ -144,7 +144,7 @@ function TabButton({
       onClick={onClick}
       disabled={disabled}
       className={`flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
-        active ? 'bg-white/10 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+        active ? 'bg-white text-slate-900 shadow-soft' : 'text-slate-500 hover:text-slate-800'
       }`}
     >
       {children}
@@ -155,7 +155,7 @@ function TabButton({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-medium text-slate-400">{label}</span>
+      <span className="mb-1.5 block text-xs font-medium text-slate-500">{label}</span>
       {children}
     </label>
   )
