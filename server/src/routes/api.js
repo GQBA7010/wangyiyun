@@ -1,23 +1,28 @@
 import { Router } from 'express'
 import { accountInfo, qrCheck, qrKey, qrUrl } from '../netease/api.js'
 import {
-  getScheduler,
+  getAccountScheduler,
+  getOwnedUser,
   getUser,
   listUsers,
   removeUser,
-  setScheduler,
+  setAccountScheduler,
   updateSettings,
   upsertUser,
 } from '../store.js'
-import { applySchedule, runAll } from '../scheduler.js'
+import { runAll } from '../scheduler.js'
+import { requireAuth } from '../security/auth.js'
 import { checkUserSession, refreshProfile, runScrobble, runSignin, runYunbeiTasks } from '../tasks.js'
 
 const router = Router()
 
-/** Strip sensitive fields (cookie) before sending a user to the client. */
+// Every endpoint below requires an authenticated platform account.
+router.use(requireAuth)
+
+/** Strip sensitive / internal fields before sending a user to the client. */
 function sanitize(user) {
   if (!user) return null
-  const { cookie, playedIds, ...rest } = user
+  const { cookie, playedIds, ownerId, ...rest } = user
   return { ...rest, playedCount: (playedIds || []).length, status: user.status || 'unknown' }
 }
 
@@ -26,7 +31,18 @@ const asyncH = (fn) => (req, res) =>
     res.status(500).json({ ok: false, error: e.message }),
   )
 
-// --- QR login -------------------------------------------------------------
+/**
+ * Resolve `:uid` to a hosted account owned by the caller, enforcing tenant
+ * isolation. Responds 404 (not 403) so owners can't probe others' uids.
+ */
+function ownUser(req, res, next) {
+  const user = getOwnedUser(req.account.id, req.params.uid)
+  if (!user) return res.status(404).json({ ok: false, error: '账号不存在' })
+  req.neteaseUser = user
+  next()
+}
+
+// --- QR login (binds the new NetEase account to the current platform user) -
 
 router.post(
   '/login/qr/key',
@@ -49,8 +65,14 @@ router.get(
       if (!uid) {
         return res.json({ ok: true, code: 803, error: '登录态获取失败，请重试' })
       }
+      // Refuse to hijack a NetEase account already hosted by someone else.
+      const existing = getUser(uid)
+      if (existing && existing.ownerId && existing.ownerId !== req.account.id) {
+        return res.json({ ok: true, code: 803, error: '该网易云账号已被其他用户托管' })
+      }
       upsertUser({
         uid,
+        ownerId: req.account.id,
         cookie: result.cookie,
         nickname: info?.profile?.nickname,
         avatarUrl: info?.profile?.avatarUrl,
@@ -72,25 +94,33 @@ router.get(
   }),
 )
 
-// --- Users ----------------------------------------------------------------
+// --- Hosted accounts (scoped to the caller) -------------------------------
 
-router.get('/users', (_req, res) => {
-  res.json({ ok: true, users: listUsers().map(sanitize) })
+router.get('/users', (req, res) => {
+  res.json({ ok: true, users: listUsers(req.account.id).map(sanitize) })
 })
 
-router.delete('/users/:uid', (req, res) => {
+router.delete('/users/:uid', ownUser, (req, res) => {
   removeUser(req.params.uid)
   res.json({ ok: true })
 })
 
-router.post('/users/:uid/settings', (req, res) => {
-  const user = updateSettings(req.params.uid, req.body || {})
-  if (!user) return res.status(404).json({ ok: false, error: 'user not found' })
+router.post('/users/:uid/settings', ownUser, (req, res) => {
+  const body = req.body || {}
+  const patch = {}
+  for (const key of ['autoSignin', 'autoScrobble', 'autoTasks']) {
+    if (key in body) patch[key] = Boolean(body[key])
+  }
+  if ('scrobbleCount' in body) {
+    patch.scrobbleCount = Math.max(1, Math.min(500, Number(body.scrobbleCount) || 300))
+  }
+  const user = updateSettings(req.params.uid, patch)
   res.json({ ok: true, user: sanitize(user) })
 })
 
 router.post(
   '/users/:uid/signin',
+  ownUser,
   asyncH(async (req, res) => {
     const result = await runSignin(req.params.uid)
     res.json({ ...result, user: sanitize(getUser(req.params.uid)) })
@@ -99,6 +129,7 @@ router.post(
 
 router.post(
   '/users/:uid/scrobble',
+  ownUser,
   asyncH(async (req, res) => {
     const result = await runScrobble(req.params.uid)
     res.json({ ...result, user: sanitize(getUser(req.params.uid)) })
@@ -107,6 +138,7 @@ router.post(
 
 router.post(
   '/users/:uid/refresh',
+  ownUser,
   asyncH(async (req, res) => {
     await refreshProfile(req.params.uid)
     res.json({ ok: true, user: sanitize(getUser(req.params.uid)) })
@@ -115,6 +147,7 @@ router.post(
 
 router.post(
   '/users/:uid/check',
+  ownUser,
   asyncH(async (req, res) => {
     const { valid } = await checkUserSession(req.params.uid)
     res.json({ ok: true, valid, user: sanitize(getUser(req.params.uid)) })
@@ -123,30 +156,32 @@ router.post(
 
 router.post(
   '/users/:uid/tasks',
+  ownUser,
   asyncH(async (req, res) => {
     const result = await runYunbeiTasks(req.params.uid)
     res.json({ ...result, user: sanitize(getUser(req.params.uid)) })
   }),
 )
 
-// --- Scheduler ------------------------------------------------------------
+// --- Per-user scheduler ---------------------------------------------------
 
-router.get('/scheduler', (_req, res) => {
-  res.json({ ok: true, scheduler: getScheduler() })
+router.get('/scheduler', (req, res) => {
+  res.json({ ok: true, scheduler: getAccountScheduler(req.account.id) })
 })
 
 router.post('/scheduler', (req, res) => {
-  const scheduler = setScheduler(req.body || {})
-  applySchedule()
+  const scheduler = setAccountScheduler(req.account.id, {
+    enabled: Boolean(req.body?.enabled),
+  })
   res.json({ ok: true, scheduler })
 })
 
-// --- Run all tasks now ----------------------------------------------------
+// --- Run all of the caller's enabled tasks now ----------------------------
 
 router.post(
   '/run-all',
-  asyncH(async (_req, res) => {
-    runAll()
+  asyncH(async (req, res) => {
+    runAll(req.account.id)
     res.json({ ok: true, message: '已触发全部任务' })
   }),
 )

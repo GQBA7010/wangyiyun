@@ -34,23 +34,55 @@ export interface User {
 }
 
 export interface Scheduler {
-  cron?: string
   enabled: boolean
+}
+
+export interface Account {
+  id: string
+  username: string
+  createdAt: number
+  lastLoginAt?: number
+  scheduler?: Scheduler
+}
+
+/** Thrown for HTTP-level failures; carries the response status for callers. */
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
 }
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
     ...init,
   })
-  const data = await res.json()
+  const data = await res.json().catch(() => ({}))
   if (!res.ok || data.ok === false) {
-    throw new Error(data.error || `请求失败 (${res.status})`)
+    throw new ApiError(data.error || `请求失败 (${res.status})`, res.status)
   }
   return data as T
 }
 
 export const api = {
+  // --- auth ---
+  me: () =>
+    http<{ account: Account | null; allowRegistration: boolean }>('/api/auth/me'),
+  register: (username: string, password: string) =>
+    http<{ account: Account }>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  login: (username: string, password: string) =>
+    http<{ account: Account }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => http('/api/auth/logout', { method: 'POST' }),
+
   qrKey: () => http<{ key: string; qrurl: string }>('/api/login/qr/key', { method: 'POST' }),
   qrCheck: (key: string) =>
     http<{

@@ -1,15 +1,17 @@
 # Lumen · 网易云音乐自动化控制台
 
-一个开箱即用的网易云音乐「懒人自动化」面板：官方扫码登录后，后台**全自动**为账号执行**每日签到**与**全天 24 小时不间断听歌打卡（刷听歌量，自动去重不重复）**，所有功能均可一键开关。专为部署到自己的服务器（如**宝塔面板**）长期托管而设计。
+一个可**多用户对外公开**的网易云音乐「懒人自动化」平台：访客自行**注册 / 登录**后，各自官方扫码托管自己的网易云账号，后台**全自动**执行**每日签到**与**全天 24 小时不间断听歌打卡（刷听歌量，自动去重不重复）**，所有功能均可一键开关。**用户之间数据完全隔离**。专为部署到自己的服务器（如**宝塔面板**）长期托管而设计。
 
-> 仅供个人学习与自动化使用。登录态（cookie）仅保存在你自己的服务器本地，不会上传到任何第三方。
+> 登录态（cookie）经 **AES-256-GCM 加密**后仅保存在你自己的服务器本地，不会上传到任何第三方。
 
 ## ✨ 功能
 
+- **多用户注册 / 登录**：任何访客可注册账号、登录使用；每个用户只能看到与操作自己托管的网易云账号（数据隔离）。
+- **账号鉴权与会话**：所有接口需登录，基于 httpOnly 签名会话 Cookie；支持退出登录。
 - **官方扫码登录**：调用 `music.163.com` 官方接口生成二维码，用网易云 App 扫码即可，无需密码。
 - **自动签到**：自动完成 PC 端 + 移动端每日签到（`dailyTask`），开关可控。
 - **自动听歌打卡**：通过官方 `weblog` 上报接口刷听歌量，自动从热门榜单取歌、**自动去重不重复**，每次数量可配置（1–500）。
-- **全天自动听歌**：开启后全天 24 小时**不间断**循环为所有账号自动听歌打卡（每日自动签到一次，时区 Asia/Shanghai），真正懒人托管。
+- **全天自动听歌**：开启后全天 24 小时**不间断**循环为你名下的账号自动听歌打卡（每日自动签到一次，时区 Asia/Shanghai），每个用户独立开关。
 - **自动云贝任务**：全天定时检测云贝任务中心（`task/todo/query`），自动完成可自动化项（收藏歌曲），并**自动领取**已完成任务的云贝奖励（`task/point/receive`），无需手动查看；开关可控（每日去重，时区 Asia/Shanghai）。
 - **多账号管理**：支持同时托管多个账号，每个账号独立开关、独立日志。
 - **登录态检测**：一键检测 cookie 是否过期，过期后自动标记提示重新扫码。
@@ -21,8 +23,9 @@
 | 层 | 技术 |
 | --- | --- |
 | 前端 | React 18 · Vite · TypeScript · Tailwind CSS |
-| 后端 | Node.js · Express |
-| 加密 | 自实现网易云 weapi / eapi（AES + RSA，纯 Node `crypto`） |
+| 后端 | Node.js · Express · Helmet · 速率限制 · gzip |
+| 鉴权 | scrypt 密码哈希 · HMAC 签名会话 Cookie（httpOnly）|
+| 加密 | 登录态 AES-256-GCM 落盘加密；网易云 weapi / eapi（AES + RSA，纯 Node `crypto`） |
 | 存储 | 本地 JSON 文件（零依赖、免编译，适合宝塔） |
 
 前端构建产物会直接输出到 `server/public`，由后端单进程同时托管 API 与页面 —— **一个 Node 进程即可运行整套应用**。
@@ -37,10 +40,16 @@ wangyiyun/
 │       ├── netease/        # 网易云加密与接口封装
 │       │   ├── crypto.js    #   weapi / eapi 加解密
 │       │   └── api.js       #   扫码登录 / 签到 / 听歌等接口
-│       ├── store.js        # JSON 存储（账号、设置、日志）
+│       ├── config.js       # 集中式运行配置（读环境变量）
+│       ├── security/       # 安全：加密、密码哈希、会话鉴权
+│       │   ├── crypto.js    #   scrypt 哈希 / AES-256-GCM / HMAC 会话令牌
+│       │   └── auth.js      #   会话签发与 requireAuth 中间件
+│       ├── store.js        # JSON 存储（平台账号 + 托管账号，登录态加密落盘）
 │       ├── tasks.js        # 签到 / 听歌打卡任务逻辑（含去重）
-│       ├── scheduler.js    # 全天 24 小时不间断听歌循环
-│       └── routes/api.js   # REST API 路由
+│       ├── scheduler.js    # 全天 24 小时不间断听歌循环（按用户开关）
+│       └── routes/
+│           ├── auth.js      #   注册 / 登录 / 退出 / 当前用户
+│           └── api.js       #   托管账号相关 REST API（按归属隔离）
 ├── web/                    # 前端（React + Vite）
 ├── ecosystem.config.cjs    # PM2 进程配置
 └── package.json            # 根脚本（build / start / deploy）
@@ -78,10 +87,25 @@ npm start               # http://localhost:3000
    pm2 save           # 保存进程列表，开机自启
    ```
    或在宝塔 PM2 管理器里「添加项目」，启动文件选择 `server/src/index.js`，运行目录为项目根目录。
-5. **反向代理（可选，用于绑定域名 / HTTPS）**：在宝塔新建站点，设置「反向代理」到 `http://127.0.0.1:3000`，再一键申请 SSL 证书即可用域名访问。
-6. **访问面板**：打开 `http://服务器IP:3000`（或你的域名）→ 点「添加账号」→ 用网易云 App 扫码 → 打开「自动签到 / 自动听歌打卡」开关 → 开启「全天自动听歌」→ 完成，后台会 24 小时不间断自动运行。
+5. **反向代理 + HTTPS（对外公开务必启用）**：在宝塔新建站点，设置「反向代理」到 `http://127.0.0.1:3000`，再一键申请 SSL 证书用域名 HTTPS 访问。会话 Cookie 默认仅在 HTTPS 下发送（`COOKIE_SECURE=true`）。
+6. **配置安全密钥**：编辑 `ecosystem.config.cjs` 或环境变量，设置随机 `SESSION_SECRET`（见下方「安全」）。
+7. **访问面板**：打开你的域名 → **注册 / 登录** → 点「添加账号」→ 用网易云 App 扫码 → 打开「自动签到 / 自动听歌打卡」开关 → 开启「全天自动听歌」→ 完成，后台会 24 小时不间断自动运行。
 
 > 端口可通过环境变量 `PORT` 修改；数据目录可通过 `DATA_DIR` 指定（见 `server/.env.example`）。
+
+## 🔐 安全（对外公开部署须知）
+
+面向公开使用时请务必：
+
+- **设置 `SESSION_SECRET`**：用于会话签名与登录态加密。生成方法：
+  ```bash
+  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+  ```
+  未设置时会自动生成并持久化到数据目录；显式设置后更利于多实例 / 迁移（更换该值会使已有会话与已加密登录态失效）。
+- **启用 HTTPS**：保持 `COOKIE_SECURE=true`（默认），反代时设 `TRUST_PROXY=1`。
+- **按需关闭注册**：如不想对外开放注册，设 `ALLOW_REGISTRATION=false`，或用 `MAX_ACCOUNTS` 限制名额。
+
+内置安全措施：Helmet 安全响应头与 CSP、登录与全局请求**速率限制**、scrypt 密码哈希、httpOnly 签名会话 Cookie、登录态 **AES-256-GCM** 落盘加密、请求体大小限制、所有接口强制鉴权且**按归属隔离**（无法越权访问他人账号）。完整环境变量见 `server/.env.example`。
 
 ## 🔌 API 速览
 
@@ -89,7 +113,12 @@ npm start               # http://localhost:3000
 | --- | --- | --- |
 | POST | `/api/login/qr/key` | 生成扫码登录二维码 |
 | GET | `/api/login/qr/check?key=` | 轮询扫码状态（801 等待 / 802 已扫 / 803 成功） |
-| GET | `/api/users` | 账号列表（不含 cookie） |
+| GET | `/api/health` | 健康检查（无需登录） |
+| POST | `/api/auth/register` | 注册并登录 |
+| POST | `/api/auth/login` | 登录 |
+| POST | `/api/auth/logout` | 退出登录 |
+| GET | `/api/auth/me` | 当前登录用户 |
+| GET | `/api/users` | 当前用户的账号列表（不含 cookie） |
 | DELETE | `/api/users/:uid` | 移除账号 |
 | POST | `/api/users/:uid/settings` | 更新开关 / 打卡数量 |
 | POST | `/api/users/:uid/signin` | 立即签到 |
@@ -97,12 +126,14 @@ npm start               # http://localhost:3000
 | POST | `/api/users/:uid/refresh` | 刷新等级 / 听歌量 |
 | POST | `/api/users/:uid/check` | 检测登录态是否有效 |
 | POST | `/api/users/:uid/tasks` | 立即执行云贝任务（自动完成可自动化项 + 自动领奖） |
-| GET/POST | `/api/scheduler` | 查看 / 开关全天自动听歌（`enabled`） |
-| POST | `/api/run-all` | 立即为所有账号执行全部已开启的任务 |
+| GET/POST | `/api/scheduler` | 查看 / 开关当前用户的全天自动听歌（`enabled`） |
+| POST | `/api/run-all` | 立即为当前用户的所有账号执行全部已开启的任务 |
+
+> 除 `/api/health` 与 `/api/auth/*` 外，所有接口均需登录；`/api/users/:uid/*` 仅能操作当前登录用户名下的账号。
 
 ## ⚠️ 说明与免责
 
 - 本项目调用网易云官方接口，接口行为可能随官方调整而变化。
 - 听歌打卡（刷听歌量）属于自动化行为，请自行评估账号风险，合理设置频率与数量。
-- 登录 cookie 等敏感数据仅存于 `server/data/`（已在 `.gitignore` 中忽略），请勿公开你的服务器或泄露该目录。
+- 登录 cookie 等敏感数据经 AES-256-GCM 加密后仅存于 `server/data/`（已在 `.gitignore` 中忽略），请勿公开你的服务器或泄露该目录与 `SESSION_SECRET`。
 - 本项目仅供学习交流，请勿用于商业牟利或违反网易云用户协议的用途。

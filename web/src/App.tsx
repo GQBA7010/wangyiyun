@@ -1,16 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, Play, Plus, Sparkles, Users } from 'lucide-react'
-import { api, type Scheduler, type User } from './lib/api'
+import { Activity, LogOut, Play, Plus, Sparkles, Users } from 'lucide-react'
+import { ApiError, api, type Account, type Scheduler, type User } from './lib/api'
 import { formatNumber } from './lib/format'
 import { AccountCard } from './components/AccountCard'
+import { AuthPage } from './components/AuthPage'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { QRLogin } from './components/QRLogin'
 import { SchedulerBar } from './components/SchedulerBar'
 import { ToastStack, type ToastItem } from './components/Toast'
 
 export default function App() {
+  const [booting, setBooting] = useState(true)
+  const [account, setAccount] = useState<Account | null>(null)
+  const [allowRegistration, setAllowRegistration] = useState(true)
+
   const [users, setUsers] = useState<User[]>([])
-  const [scheduler, setScheduler] = useState<Scheduler>({ cron: '0 8 * * *', enabled: true })
+  const [scheduler, setScheduler] = useState<Scheduler>({ enabled: false })
   const [showLogin, setShowLogin] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
@@ -21,7 +28,29 @@ export default function App() {
     setToasts((t) => t.filter((x) => x.id !== id))
   }, [])
 
+  // Treat an expired/invalid session (401) as a logout.
+  const handleError = useCallback((e: unknown) => {
+    if (e instanceof ApiError && e.status === 401) {
+      setAccount(null)
+      return
+    }
+    notify((e as Error).message, false)
+  }, [notify])
+
+  // Bootstrap: resolve current session.
+  useEffect(() => {
+    api
+      .me()
+      .then(({ account, allowRegistration }) => {
+        setAccount(account)
+        setAllowRegistration(allowRegistration)
+      })
+      .catch(() => setAccount(null))
+      .finally(() => setBooting(false))
+  }, [])
+
   const load = useCallback(async () => {
+    setLoading(true)
     try {
       const [{ users: u }, { scheduler: s }] = await Promise.all([
         api.listUsers(),
@@ -30,15 +59,15 @@ export default function App() {
       setUsers(u)
       setScheduler(s)
     } catch (e) {
-      notify((e as Error).message, false)
+      handleError(e)
     } finally {
       setLoading(false)
     }
-  }, [notify])
+  }, [handleError])
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (account) load()
+  }, [account, load])
 
   const upsertUser = (user: User) =>
     setUsers((list) => {
@@ -49,23 +78,59 @@ export default function App() {
       return next
     })
 
-  const removeUser = async (uid: number) => {
+  const confirmRemove = async () => {
+    if (!pendingDelete) return
+    const uid = pendingDelete.uid
+    setPendingDelete(null)
     setUsers((list) => list.filter((x) => x.uid !== uid))
     try {
       await api.removeUser(uid)
       notify('已移除账号', true)
     } catch (e) {
-      notify((e as Error).message, false)
+      handleError(e)
     }
+  }
+
+  const logout = async () => {
+    try {
+      await api.logout()
+    } catch {
+      /* ignore */
+    }
+    setAccount(null)
+    setUsers([])
   }
 
   const stats = useMemo(() => {
     const totalListen = users.reduce((s, u) => s + (u.listenSongs ?? 0), 0)
     const active = users.filter(
-      (u) => u.settings.autoSignin || u.settings.autoScrobble,
+      (u) => u.settings.autoSignin || u.settings.autoScrobble || u.settings.autoTasks,
     ).length
     return { accounts: users.length, active, totalListen }
   }, [users])
+
+  if (booting) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-mesh">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-white/15 border-t-brand-500" />
+      </div>
+    )
+  }
+
+  if (!account) {
+    return (
+      <>
+        <AuthPage
+          allowRegistration={allowRegistration}
+          onAuthed={(acc) => {
+            setAccount(acc)
+            notify(`欢迎回来，${acc.username}`, true)
+          }}
+        />
+        <ToastStack toasts={toasts} dismiss={dismiss} />
+      </>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-mesh">
@@ -87,7 +152,13 @@ export default function App() {
               网易云音乐 · 自动签到 / 自动听歌打卡，一处开关，全程托管。
             </p>
           </div>
-          <div className="flex gap-2 self-start">
+          <div className="flex flex-wrap items-center gap-2 self-start">
+            <span className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-slate-300 sm:inline-flex">
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-[11px] font-bold text-white">
+                {account.username.slice(0, 1).toUpperCase()}
+              </span>
+              {account.username}
+            </span>
             {users.length > 0 && (
               <button
                 onClick={async () => {
@@ -96,7 +167,7 @@ export default function App() {
                     notify(message, true)
                     setTimeout(load, 2000)
                   } catch (e) {
-                    notify((e as Error).message, false)
+                    handleError(e)
                   }
                 }}
                 className="btn-ghost"
@@ -106,6 +177,9 @@ export default function App() {
             )}
             <button onClick={() => setShowLogin(true)} className="btn-primary">
               <Plus className="h-4 w-4" /> 添加账号
+            </button>
+            <button onClick={logout} className="btn-ghost" title="退出登录">
+              <LogOut className="h-4 w-4" />
             </button>
           </div>
         </header>
@@ -131,7 +205,24 @@ export default function App() {
 
         {/* accounts */}
         {loading ? (
-          <div className="py-24 text-center text-slate-500">加载中…</div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="glass h-80 p-6">
+                <div className="flex items-center gap-4">
+                  <div className="skeleton h-14 w-14 rounded-2xl" />
+                  <div className="flex-1 space-y-2">
+                    <div className="skeleton h-4 w-2/3" />
+                    <div className="skeleton h-3 w-1/3" />
+                  </div>
+                </div>
+                <div className="mt-6 space-y-3">
+                  <div className="skeleton h-2 w-full" />
+                  <div className="skeleton h-24 w-full" />
+                  <div className="skeleton h-10 w-full" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : users.length === 0 ? (
           <EmptyState onAdd={() => setShowLogin(true)} />
         ) : (
@@ -142,7 +233,7 @@ export default function App() {
                 user={u}
                 index={i}
                 onChange={upsertUser}
-                onRemove={removeUser}
+                onRemove={() => setPendingDelete(u)}
                 notify={notify}
               />
             ))}
@@ -150,7 +241,7 @@ export default function App() {
         )}
 
         <footer className="mt-16 border-t border-white/[0.06] pt-6 text-center text-xs text-slate-600">
-          Lumen · 仅供个人学习与自动化使用 · 登录态安全存储于你自己的服务器
+          Lumen · 仅供个人学习与自动化使用 · 数据按账号隔离，登录态加密存储于服务器
         </footer>
       </div>
 
@@ -162,6 +253,16 @@ export default function App() {
             setShowLogin(false)
             notify(`账号「${user.nickname || user.uid}」已添加`, true)
           }}
+        />
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="移除账号"
+          message={`确定移除「${pendingDelete.nickname || pendingDelete.uid}」吗？该账号的托管设置与登录态将被删除，可重新扫码再次添加。`}
+          confirmLabel="移除"
+          onConfirm={confirmRemove}
+          onCancel={() => setPendingDelete(null)}
         />
       )}
 

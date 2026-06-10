@@ -1,12 +1,12 @@
-import { getScheduler, getUser, listUsers } from './store.js'
+import { getAccountScheduler, getUser, listUsers } from './store.js'
 import { runScrobble, runSignin, runUserTasks, runYunbeiTasks } from './tasks.js'
 
 let loopActive = false // the continuous loop is currently running
-let stopRequested = false // request the continuous loop to stop
 let busy = false // a task batch is currently executing (manual or loop)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const CYCLE_GAP_MS = 5000 // short breather between full listen cycles
+const IDLE_GAP_MS = 15000 // longer wait when nobody has auto-listen enabled
 
 /** True if a timestamp falls within today (Asia/Shanghai). */
 function isToday(ts) {
@@ -18,12 +18,17 @@ function isToday(ts) {
   )
 }
 
-/** Manual one-shot: run all enabled tasks once for every account. */
-async function runAll() {
+/** Whether a hosted account's owner has 24/7 auto-listen enabled. */
+function ownerEnabled(user) {
+  return !!getAccountScheduler(user.ownerId)?.enabled
+}
+
+/** Manual one-shot: run all enabled tasks once for a single owner's accounts. */
+async function runAll(ownerId) {
   if (busy) return
   busy = true
   try {
-    for (const user of listUsers()) {
+    for (const user of listUsers(ownerId)) {
       try {
         await runUserTasks(user.uid)
       } catch (e) {
@@ -37,65 +42,50 @@ async function runAll() {
 }
 
 /**
- * Continuous 24/7 auto-listen loop. While enabled, it keeps scrobbling for
- * every account non-stop, cycle after cycle. Daily sign-in is performed once
- * per day per account; listening repeats indefinitely.
+ * Continuous 24/7 auto-listen loop. Runs for the lifetime of the process and
+ * only acts on accounts whose owner has enabled auto-listen. Daily sign-in /
+ * yunbei tasks run once per day per account; listening repeats indefinitely.
  */
 async function continuousLoop() {
   if (loopActive) return
   loopActive = true
-  stopRequested = false
   // eslint-disable-next-line no-console
-  console.log('[scheduler] continuous 24/7 auto-listen started')
-  try {
-    while (!stopRequested) {
-      const users = listUsers()
-      if (!users.length) {
-        await sleep(CYCLE_GAP_MS)
-        continue
-      }
-      for (const user of users) {
-        if (stopRequested) break
-        busy = true
-        try {
-          const fresh = getUser(user.uid)
-          if (user.settings?.autoSignin && !isToday(fresh?.lastSignin?.at)) {
-            await runSignin(user.uid)
-          }
-          if (user.settings?.autoTasks && !isToday(fresh?.lastYunbei?.at)) {
-            await runYunbeiTasks(user.uid)
-          }
-          if (user.settings?.autoScrobble) {
-            await runScrobble(user.uid)
-          }
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.error(`[scheduler] loop failed for ${user.uid}:`, e.message)
-        } finally {
-          busy = false
-        }
-      }
-      if (!stopRequested) await sleep(CYCLE_GAP_MS)
+  console.log('[scheduler] continuous 24/7 auto-listen worker started')
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const users = listUsers().filter(ownerEnabled)
+    if (!users.length) {
+      await sleep(IDLE_GAP_MS)
+      continue
     }
-  } finally {
-    loopActive = false
-    // eslint-disable-next-line no-console
-    console.log('[scheduler] continuous auto-listen stopped')
+    for (const user of users) {
+      if (!ownerEnabled(user)) continue
+      busy = true
+      try {
+        const fresh = getUser(user.uid)
+        if (user.settings?.autoSignin && !isToday(fresh?.lastSignin?.at)) {
+          await runSignin(user.uid)
+        }
+        if (user.settings?.autoTasks && !isToday(fresh?.lastYunbei?.at)) {
+          await runYunbeiTasks(user.uid)
+        }
+        if (user.settings?.autoScrobble) {
+          await runScrobble(user.uid)
+        }
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error(`[scheduler] loop failed for ${user.uid}:`, e.message)
+      } finally {
+        busy = false
+      }
+    }
+    await sleep(CYCLE_GAP_MS)
   }
 }
 
-/**
- * Start or stop the continuous auto-listen loop based on the persisted
- * `scheduler.enabled` flag. Enabling means 24/7 non-stop listening.
- */
+/** Start the continuous auto-listen worker (idempotent). */
 export function applySchedule() {
-  const { enabled } = getScheduler()
-  if (enabled) {
-    stopRequested = false
-    if (!loopActive) continuousLoop()
-  } else {
-    stopRequested = true
-  }
+  if (!loopActive) continuousLoop()
 }
 
 export { runAll }

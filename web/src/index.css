@@ -56,4 +56,12 @@
   .label {
     @apply text-xs font-medium uppercase tracking-wider text-slate-400;
   }
+
+  .auth-input {
+    @apply w-full rounded-xl border border-white/10 bg-ink-900 px-3.5 py-2.5 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/30;
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-xl bg-white/[0.05];
+  }
 }
