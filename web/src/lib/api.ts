@@ -1,0 +1,80 @@
+export interface UserSettings {
+  autoSignin: boolean
+  autoScrobble: boolean
+  scrobbleCount: number
+}
+
+export interface TaskResult {
+  at: number
+  message: string
+  count?: number
+}
+
+export interface LogEntry {
+  at: number
+  type: string
+  message: string
+  ok: boolean
+}
+
+export interface User {
+  uid: number
+  nickname?: string
+  avatarUrl?: string
+  level?: number
+  listenSongs?: number
+  settings: UserSettings
+  lastSignin?: TaskResult
+  lastScrobble?: TaskResult
+  logs?: LogEntry[]
+  playedCount?: number
+}
+
+export interface Scheduler {
+  cron: string
+  enabled: boolean
+}
+
+async function http<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...init,
+  })
+  const data = await res.json()
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || `请求失败 (${res.status})`)
+  }
+  return data as T
+}
+
+export const api = {
+  qrKey: () => http<{ key: string; qrurl: string }>('/api/login/qr/key', { method: 'POST' }),
+  qrCheck: (key: string) =>
+    http<{
+      code: number
+      message?: string
+      nickname?: string
+      avatarUrl?: string
+      user?: User
+      error?: string
+    }>(`/api/login/qr/check?key=${encodeURIComponent(key)}`),
+  listUsers: () => http<{ users: User[] }>('/api/users'),
+  removeUser: (uid: number) => http(`/api/users/${uid}`, { method: 'DELETE' }),
+  updateSettings: (uid: number, settings: Partial<UserSettings>) =>
+    http<{ user: User }>(`/api/users/${uid}/settings`, {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    }),
+  signin: (uid: number) =>
+    http<{ message: string; user: User }>(`/api/users/${uid}/signin`, { method: 'POST' }),
+  scrobble: (uid: number) =>
+    http<{ message: string; user: User }>(`/api/users/${uid}/scrobble`, { method: 'POST' }),
+  refresh: (uid: number) =>
+    http<{ user: User }>(`/api/users/${uid}/refresh`, { method: 'POST' }),
+  getScheduler: () => http<{ scheduler: Scheduler }>('/api/scheduler'),
+  setScheduler: (patch: Partial<Scheduler>) =>
+    http<{ scheduler: Scheduler }>('/api/scheduler', {
+      method: 'POST',
+      body: JSON.stringify(patch),
+    }),
+}
