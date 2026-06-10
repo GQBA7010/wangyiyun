@@ -3,6 +3,10 @@ import {
   checkSession,
   dailySignin,
   likeSong,
+  partnerDailyTasks,
+  partnerEvaluate,
+  partnerExtraTasks,
+  partnerReportListen,
   playlistDetail,
   scrobble,
   userDetail,
@@ -259,6 +263,120 @@ export async function runYunbeiTasks(uid) {
   return { ok: true, message, claimed, total: tasks.length }
 }
 
+/** Decide an evaluation score (1-5) for a work using the owner's strategy. */
+function pickPartnerScore(work, strategy = 3) {
+  const hasEnglish = /[a-zA-Z]/.test(`${work?.name || ''}${work?.authorName || ''}`)
+  if (strategy === 1) return hasEnglish ? 2 : 1
+  if (strategy === 2) return hasEnglish ? 3 : 2
+  if (strategy === 4) return 4
+  return hasEnglish ? 4 : 3 // strategy 3 (default, 3-4 分)
+}
+
+const PARTNER_EXTRA_CAP = 7 // daily bonus-evaluation cap
+
+/**
+ * Music Partner (音乐合伙人) auto-evaluation. Fetches the day's pending works
+ * and submits a rating for each (base works + up to 7 bonus works). Idempotent
+ * within a day — already-evaluated works are skipped, so re-running on every
+ * refresh simply rates anything newly available ("刷新了就评价").
+ *
+ * Gracefully degrades when the account has no partner qualification.
+ */
+export async function runPartnerEvaluate(uid) {
+  const user = getUser(uid)
+  if (!user) return { ok: false, message: 'user not found' }
+  const strategy = Math.max(1, Math.min(4, Number(user.settings?.partnerScore) || 3))
+
+  let daily
+  try {
+    daily = await partnerDailyTasks(user.cookie)
+  } catch (e) {
+    const message = `音乐合伙人：获取任务失败 ${e.message}`
+    addLog(uid, 'partner', message, false)
+    return { ok: false, message }
+  }
+
+  // No qualification / not invited -> record once and bail (no spam).
+  if (!daily || daily.code !== 200 || !daily.data) {
+    const ineligible =
+      daily?.code === 405 ||
+      /资格|权限|未授权|not.*partner/i.test(daily?.message || daily?.msg || '')
+    const message = ineligible
+      ? '音乐合伙人：当前账号暂无测评资格'
+      : `音乐合伙人：暂不可用（${daily?.code ?? '无响应'}）`
+    addLog(uid, 'partner', message, false)
+    const fresh0 = getUser(uid)
+    fresh0.lastPartner = { at: Date.now(), message, eligible: false, evaluated: 0 }
+    save()
+    return { ok: false, eligible: false, message }
+  }
+
+  const data = daily.data
+  const taskId = data.id
+  const baseWorks = Array.isArray(data.works) ? data.works : []
+  let evaluated = 0
+  let baseDone = 0
+
+  // Base daily works.
+  for (const t of baseWorks) {
+    if (t.completed || !t.work?.id) continue
+    try {
+      const score = pickPartnerScore(t.work, strategy)
+      const res = await partnerEvaluate({ taskId, workId: t.work.id, score }, user.cookie)
+      if (res?.code === 200) {
+        evaluated += 1
+        baseDone += 1
+      }
+    } catch {
+      /* skip individual work failures */
+    }
+    await sleep(1500 + Math.floor(Math.random() * 1500))
+  }
+
+  // Bonus (extra) works: report a listen first, then evaluate, up to the cap.
+  let extraDone = 0
+  try {
+    const extraRes = await partnerExtraTasks(user.cookie)
+    if (extraRes?.code === 200 && Array.isArray(extraRes.data)) {
+      const pending = extraRes.data.filter((t) => !t.completed && t.work?.id)
+      for (const t of pending) {
+        if (extraDone >= PARTNER_EXTRA_CAP) break
+        try {
+          await partnerReportListen(
+            { workId: t.work.id, resourceId: t.work.resourceId },
+            user.cookie,
+          )
+          await sleep(800)
+          const score = pickPartnerScore(t.work, strategy)
+          const res = await partnerEvaluate(
+            { taskId, workId: t.work.id, score, extra: true },
+            user.cookie,
+          )
+          if (res?.code === 200) {
+            evaluated += 1
+            extraDone += 1
+          }
+        } catch {
+          /* skip individual bonus failures */
+        }
+        await sleep(1500 + Math.floor(Math.random() * 1500))
+      }
+    }
+  } catch {
+    /* extra list is best-effort */
+  }
+
+  const message =
+    evaluated > 0
+      ? `音乐合伙人：本轮评测 ${evaluated} 首（基础 ${baseDone} · 加分 ${extraDone}）`
+      : `音乐合伙人：暂无待评测作品（今日 ${data.completedCount ?? 0}/${data.count ?? 0}）`
+  addLog(uid, 'partner', message, true)
+  const fresh = getUser(uid)
+  fresh.lastPartner = { at: Date.now(), message, eligible: true, evaluated }
+  save()
+  return { ok: true, eligible: true, message, evaluated }
+}
+
 /** Run all enabled automations for one user. */
 export async function runUserTasks(uid) {
   const user = getUser(uid)
@@ -266,6 +384,7 @@ export async function runUserTasks(uid) {
   if (user.settings?.autoSignin) await runSignin(uid)
   if (user.settings?.autoScrobble) await runScrobble(uid)
   if (user.settings?.autoTasks) await runYunbeiTasks(uid)
+  if (user.settings?.autoPartner) await runPartnerEvaluate(uid)
 }
 
 export async function refreshAccountUid(cookie) {

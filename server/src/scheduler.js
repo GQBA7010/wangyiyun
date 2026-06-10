@@ -1,5 +1,11 @@
 import { getAccountScheduler, getUser, listUsers } from './store.js'
-import { runScrobble, runSignin, runUserTasks, runYunbeiTasks } from './tasks.js'
+import {
+  runPartnerEvaluate,
+  runScrobble,
+  runSignin,
+  runUserTasks,
+  runYunbeiTasks,
+} from './tasks.js'
 
 let loopActive = false // the continuous loop is currently running
 let busy = false // a task batch is currently executing (manual or loop)
@@ -68,6 +74,16 @@ async function continuousLoop() {
         }
         if (user.settings?.autoTasks && !isToday(fresh?.lastYunbei?.at)) {
           await runYunbeiTasks(user.uid)
+        }
+        // Music-partner evaluation runs every cycle ("刷新了就评价"), but skip
+        // accounts we already know lack qualification (checked today) so the
+        // logs don't fill up with repeated "无测评资格" entries.
+        if (user.settings?.autoPartner) {
+          const ineligibleToday =
+            fresh?.lastPartner?.eligible === false && isToday(fresh?.lastPartner?.at)
+          if (!ineligibleToday) {
+            await runPartnerEvaluate(user.uid)
+          }
         }
         if (user.settings?.autoScrobble) {
           await runScrobble(user.uid)

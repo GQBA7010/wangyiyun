@@ -2,6 +2,8 @@ export interface UserSettings {
   autoSignin: boolean
   autoScrobble: boolean
   autoTasks: boolean
+  autoPartner: boolean
+  partnerScore: number
   scrobbleCount: number
 }
 
@@ -9,6 +11,11 @@ export interface TaskResult {
   at: number
   message: string
   count?: number
+}
+
+export interface PartnerResult extends TaskResult {
+  eligible?: boolean
+  evaluated?: number
 }
 
 export interface LogEntry {
@@ -28,6 +35,7 @@ export interface User {
   lastSignin?: TaskResult
   lastScrobble?: TaskResult
   lastYunbei?: TaskResult & { claimed?: number; total?: number }
+  lastPartner?: PartnerResult
   logs?: LogEntry[]
   playedCount?: number
   status?: 'active' | 'expired' | 'unknown'
@@ -112,6 +120,11 @@ export const api = {
   yunbeiTasks: (uid: number) =>
     http<{ message: string; claimed: number; total: number; user: User }>(
       `/api/users/${uid}/tasks`,
+      { method: 'POST' },
+    ),
+  partner: (uid: number) =>
+    http<{ message: string; eligible?: boolean; evaluated?: number; user: User }>(
+      `/api/users/${uid}/partner`,
       { method: 'POST' },
     ),
   runAll: () =>

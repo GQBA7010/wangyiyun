@@ -9,6 +9,7 @@ import {
   Music2,
   RefreshCw,
   ShieldCheck,
+  Star,
   Trash2,
 } from 'lucide-react'
 import { api, type User, type UserSettings } from '../lib/api'
@@ -46,7 +47,7 @@ export function AccountCard({
   }
 
   const run = async (
-    kind: 'signin' | 'scrobble' | 'refresh' | 'check' | 'tasks',
+    kind: 'signin' | 'scrobble' | 'refresh' | 'check' | 'tasks' | 'partner',
     fn: () => Promise<{ user: User; message?: string }>,
   ) => {
     setBusy(kind)
@@ -128,6 +129,39 @@ export function AccountCard({
         </div>
       </div>
 
+      {/* feature status overview */}
+      <div className="grid grid-cols-2 gap-2">
+        <StatusChip
+          label="自动签到"
+          enabled={user.settings.autoSignin}
+          ok={user.lastSignin ? true : undefined}
+          at={user.lastSignin?.at}
+        />
+        <StatusChip
+          label="自动听歌"
+          enabled={user.settings.autoScrobble}
+          ok={user.lastScrobble ? true : undefined}
+          at={user.lastScrobble?.at}
+        />
+        <StatusChip
+          label="云贝任务"
+          enabled={user.settings.autoTasks}
+          ok={user.lastYunbei ? true : undefined}
+          at={user.lastYunbei?.at}
+        />
+        <StatusChip
+          label="合伙人评测"
+          enabled={user.settings.autoPartner}
+          ok={
+            user.lastPartner
+              ? user.lastPartner.eligible !== false
+              : undefined
+          }
+          at={user.lastPartner?.at}
+          note={user.lastPartner?.eligible === false ? '无资格' : undefined}
+        />
+      </div>
+
       {/* automation toggles */}
       <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
         <ToggleRow
@@ -154,6 +188,31 @@ export function AccountCard({
           checked={user.settings.autoTasks}
           onChange={(v) => patchSettings({ autoTasks: v })}
         />
+
+        <div className="h-px bg-slate-200" />
+        <ToggleRow
+          icon={<Star className="h-4 w-4 text-violet-500" />}
+          title="自动音乐合伙人评测"
+          desc={`上次：${user.lastPartner?.message?.slice(0, 40) ?? '从未执行'}${user.lastPartner?.message && user.lastPartner.message.length > 40 ? '…' : ''} · ${timeAgo(user.lastPartner?.at)}`}
+          checked={user.settings.autoPartner}
+          onChange={(v) => patchSettings({ autoPartner: v })}
+        />
+
+        {user.settings.autoPartner && (
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs text-slate-500">评分策略</span>
+            <select
+              value={user.settings.partnerScore}
+              onChange={(e) => patchSettings({ partnerScore: Number(e.target.value) })}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15"
+            >
+              <option value={1}>偏低（1-2 分）</option>
+              <option value={2}>中等（2-3 分）</option>
+              <option value={3}>较高（3-4 分）</option>
+              <option value={4}>固定 4 分</option>
+            </select>
+          </div>
+        )}
 
         {user.settings.autoScrobble && (
           <div className="flex items-center justify-between pt-1">
@@ -184,7 +243,7 @@ export function AccountCard({
       </div>
 
       {/* manual actions */}
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
         <ActionBtn
           busy={busy === 'signin'}
           onClick={() => run('signin', () => api.signin(user.uid))}
@@ -214,6 +273,12 @@ export function AccountCard({
           onClick={() => run('tasks', () => api.yunbeiTasks(user.uid))}
           icon={<Gift className="h-4 w-4" />}
           label="云贝"
+        />
+        <ActionBtn
+          busy={busy === 'partner'}
+          onClick={() => run('partner', () => api.partner(user.uid))}
+          icon={<Star className="h-4 w-4" />}
+          label="评测"
         />
       </div>
 
@@ -280,6 +345,40 @@ function ToggleRow({
         <p className="truncate text-[11px] text-slate-500">{desc}</p>
       </div>
       <Toggle checked={checked} onChange={onChange} />
+    </div>
+  )
+}
+
+/** Compact per-feature status pill: name + enabled state + last-run dot/time. */
+function StatusChip({
+  label,
+  enabled,
+  ok,
+  at,
+  note,
+}: {
+  label: string
+  enabled: boolean
+  ok?: boolean
+  at?: number
+  note?: string
+}) {
+  const dot = !enabled
+    ? 'bg-slate-300'
+    : ok === false
+      ? 'bg-rose-500'
+      : ok === true
+        ? 'bg-accent-500'
+        : 'bg-amber-400'
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2">
+      <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-semibold text-slate-700">{label}</p>
+        <p className="truncate text-[10px] text-slate-400">
+          {enabled ? (note ?? (at ? timeAgo(at) : '待运行')) : '已关闭'}
+        </p>
+      </div>
     </div>
   )
 }

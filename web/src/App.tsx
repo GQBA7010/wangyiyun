@@ -104,7 +104,11 @@ export default function App() {
   const stats = useMemo(() => {
     const totalListen = users.reduce((s, u) => s + (u.listenSongs ?? 0), 0)
     const active = users.filter(
-      (u) => u.settings.autoSignin || u.settings.autoScrobble || u.settings.autoTasks,
+      (u) =>
+        u.settings.autoSignin ||
+        u.settings.autoScrobble ||
+        u.settings.autoTasks ||
+        u.settings.autoPartner,
     ).length
     return { accounts: users.length, active, totalListen }
   }, [users])

@@ -207,3 +207,97 @@ export async function likeSong(trackId, cookie) {
   }, cookie)
   return data
 }
+
+// ---------------------------------------------------------------------------
+// Music Partner (音乐合伙人) evaluation APIs
+//
+// These live on the `interface.music.163.com` host and are gated behind the
+// "音乐合伙人" qualification (NetEase invites a subset of users). Endpoints:
+//   GET  /api/music/partner/daily/task/get               -> base daily works
+//   GET  /api/music/partner/extra/wait/evaluate/work/list -> bonus works
+//   POST /weapi/partner/resource/interact/report          -> report a listen
+//   POST /weapi/music/partner/work/evaluate               -> submit a rating
+// ---------------------------------------------------------------------------
+
+const MP_BASE = 'https://interface.music.163.com'
+const MP_REFERER = 'https://mp.music.163.com/'
+const MP_ORIGIN = 'https://mp.music.163.com'
+
+/** Authenticated GET against the music-partner interface host. */
+async function mpGet(path, cookie) {
+  const ip = randomIP()
+  const res = await axios.get(`${MP_BASE}${path}`, {
+    headers: {
+      'User-Agent': DESKTOP_UA,
+      Referer: MP_REFERER,
+      Origin: MP_ORIGIN,
+      Cookie: cookie || 'os=pc; appver=2.9.7',
+      'X-Real-IP': ip,
+      'X-Forwarded-For': ip,
+    },
+    timeout: 15000,
+    validateStatus: () => true,
+  })
+  return res.data
+}
+
+/** weapi POST against the music-partner host (csrf carried in body + query). */
+async function mpWeapiPost(path, payload, cookie) {
+  const csrf = readCsrf(cookie)
+  const body = new URLSearchParams(weapi({ ...payload, csrf_token: csrf })).toString()
+  const ip = randomIP()
+  const res = await axios.post(`${MP_BASE}/weapi${path}?csrf_token=${csrf}`, body, {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'User-Agent': DESKTOP_UA,
+      Referer: MP_REFERER,
+      Origin: MP_ORIGIN,
+      Cookie: cookie || 'os=pc; appver=2.9.7',
+      'X-Real-IP': ip,
+      'X-Forwarded-For': ip,
+    },
+    timeout: 15000,
+    validateStatus: () => true,
+  })
+  return res.data
+}
+
+/** Fetch the daily music-partner evaluation tasks (the base works of the day). */
+export async function partnerDailyTasks(cookie) {
+  return mpGet('/api/music/partner/daily/task/get', cookie)
+}
+
+/** Fetch the extra "waiting to evaluate" work list (bonus works). */
+export async function partnerExtraTasks(cookie) {
+  return mpGet('/api/music/partner/extra/wait/evaluate/work/list', cookie)
+}
+
+/** Report a "listen end" interaction for an extra work (required before extra evaluate). */
+export async function partnerReportListen({ workId, resourceId }, cookie) {
+  return mpWeapiPost('/partner/resource/interact/report', {
+    workId,
+    resourceId,
+    bizResourceId: '',
+    interactType: 'PLAY_END',
+  }, cookie)
+}
+
+/**
+ * Submit a music-partner evaluation.
+ * `score` is an integer 1-5; `extra` marks a bonus (extra) work.
+ * code 200 = success; 405 + "资格状态异常" = no qualification / resource issue.
+ */
+export async function partnerEvaluate({ taskId, workId, score, extra = false }, cookie) {
+  const s = String(score)
+  const payload = {
+    taskId: String(taskId ?? ''),
+    workId: String(workId),
+    score: s,
+    tags: `${s}-A-1`,
+    customTags: '%5B%5D',
+    comment: '',
+    syncYunCircle: 'true',
+  }
+  if (extra) payload.extraResource = 'true'
+  return mpWeapiPost('/music/partner/work/evaluate', payload, cookie)
+}

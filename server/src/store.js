@@ -15,6 +15,8 @@ const DEFAULT_SETTINGS = {
   autoSignin: true,
   autoScrobble: true,
   autoTasks: true,
+  autoPartner: false, // music-partner evaluation — off by default (needs qualification)
+  partnerScore: 3, // scoring strategy 1-4 (3 = 3-4 分, the recommended default)
   scrobbleCount: 300,
 }
 

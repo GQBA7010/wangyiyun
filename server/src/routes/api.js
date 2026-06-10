@@ -12,7 +12,14 @@ import {
 } from '../store.js'
 import { runAll } from '../scheduler.js'
 import { requireAuth } from '../security/auth.js'
-import { checkUserSession, refreshProfile, runScrobble, runSignin, runYunbeiTasks } from '../tasks.js'
+import {
+  checkUserSession,
+  refreshProfile,
+  runPartnerEvaluate,
+  runScrobble,
+  runSignin,
+  runYunbeiTasks,
+} from '../tasks.js'
 
 const router = Router()
 
@@ -108,11 +115,14 @@ router.delete('/users/:uid', ownUser, (req, res) => {
 router.post('/users/:uid/settings', ownUser, (req, res) => {
   const body = req.body || {}
   const patch = {}
-  for (const key of ['autoSignin', 'autoScrobble', 'autoTasks']) {
+  for (const key of ['autoSignin', 'autoScrobble', 'autoTasks', 'autoPartner']) {
     if (key in body) patch[key] = Boolean(body[key])
   }
   if ('scrobbleCount' in body) {
     patch.scrobbleCount = Math.max(1, Math.min(500, Number(body.scrobbleCount) || 300))
+  }
+  if ('partnerScore' in body) {
+    patch.partnerScore = Math.max(1, Math.min(4, Number(body.partnerScore) || 3))
   }
   const user = updateSettings(req.params.uid, patch)
   res.json({ ok: true, user: sanitize(user) })
@@ -160,6 +170,23 @@ router.post(
   asyncH(async (req, res) => {
     const result = await runYunbeiTasks(req.params.uid)
     res.json({ ...result, user: sanitize(getUser(req.params.uid)) })
+  }),
+)
+
+router.post(
+  '/users/:uid/partner',
+  ownUser,
+  asyncH(async (req, res) => {
+    const result = await runPartnerEvaluate(req.params.uid)
+    // The HTTP request always succeeds; an ineligible account is a normal
+    // outcome conveyed via `eligible`/`message`, not a transport error.
+    res.json({
+      ok: true,
+      message: result.message,
+      eligible: result.eligible,
+      evaluated: result.evaluated,
+      user: sanitize(getUser(req.params.uid)),
+    })
   }),
 )
 
