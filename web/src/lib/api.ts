@@ -41,6 +41,14 @@ export interface User {
   status?: "active" | "expired" | "unknown";
 }
 
+export interface ScrobbleStatus {
+  uid: number;
+  startedAt: number;
+  current: number;
+  total: number;
+  estimatedRemaining: number;
+}
+
 export interface Scheduler {
   enabled: boolean;
 }
@@ -166,6 +174,8 @@ export const api = {
       error?: string;
     }>(`/api/login/qr/check?key=${encodeURIComponent(key)}`),
   listUsers: () => http<{ users: User[] }>("/api/users"),
+  usersStatus: () =>
+    http<{ statuses: ScrobbleStatus[] }>("/api/users/status"),
   removeUser: (uid: number) => http(`/api/users/${uid}`, { method: "DELETE" }),
   updateSettings: (uid: number, settings: Partial<UserSettings>) =>
     http<{ user: User }>(`/api/users/${uid}/settings`, {

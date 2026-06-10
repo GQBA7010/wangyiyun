@@ -18,6 +18,7 @@ import { config } from '../config.js'
 import { requireAccount, requireAuth, requireOwnedUser } from '../security/auth.js'
 import {
   checkUserSession,
+  getScrobbleStatus,
   refreshProfile,
   runPartnerEvaluate,
   runScrobble,
@@ -139,6 +140,13 @@ router.get(
 
 router.get('/users', (req: Request, res: Response) => {
   res.json({ ok: true, users: listUsers(requireAccount(req).id).map(sanitize) })
+})
+
+/** Real-time listening status for the caller's hosted accounts. */
+router.get('/users/status', (req: Request, res: Response) => {
+  const ownedUids = listUsers(requireAccount(req).id).map((u) => u.uid)
+  const statuses = getScrobbleStatus(ownedUids)
+  res.json({ ok: true, statuses })
 })
 
 router.delete('/users/:uid', ownUser, (req: Request, res: Response) => {

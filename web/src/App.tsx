@@ -13,6 +13,7 @@ import {
   api,
   type Account,
   type Scheduler,
+  type ScrobbleStatus,
   type User,
 } from "./lib/api";
 import { formatNumber } from "./lib/format";
@@ -36,6 +37,9 @@ export default function App() {
 
   const [users, setUsers] = useState<User[]>([]);
   const [scheduler, setScheduler] = useState<Scheduler>({ enabled: false });
+  const [scrobbleStatuses, setScrobbleStatuses] = useState<ScrobbleStatus[]>(
+    [],
+  );
   const [showLogin, setShowLogin] = useState(false);
   const [showChangePw, setShowChangePw] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<User | null>(null);
@@ -93,6 +97,26 @@ export default function App() {
   useEffect(() => {
     if (account && !IS_ADMIN_PATH) load();
   }, [account, load]);
+
+  // Poll listening status every 10 seconds when logged in
+  useEffect(() => {
+    if (!account || IS_ADMIN_PATH) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const { statuses } = await api.usersStatus();
+        if (!cancelled) setScrobbleStatuses(statuses);
+      } catch {
+        /* ignore polling errors */
+      }
+    };
+    void poll();
+    const id = setInterval(poll, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [account]);
 
   const upsertUser = (user: User) =>
     setUsers((list) => {
@@ -317,6 +341,9 @@ export default function App() {
                 key={u.uid}
                 user={u}
                 index={i}
+                scrobbleStatus={scrobbleStatuses.find(
+                  (s) => s.uid === u.uid,
+                )}
                 onChange={upsertUser}
                 onRemove={() => setPendingDelete(u)}
                 notify={notify}

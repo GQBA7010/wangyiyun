@@ -32,6 +32,27 @@ export interface TaskResult {
   message: string
 }
 
+/** Real-time progress of a scrobble batch for a hosted account. */
+export interface ScrobbleProgress {
+  uid: number
+  startedAt: number
+  current: number
+  total: number
+  /** Estimated seconds remaining based on average gap between songs. */
+  estimatedRemaining: number
+}
+
+// Global map tracking accounts currently in a scrobble batch.
+const activeScrobbles = new Map<number, ScrobbleProgress>()
+
+/** Get current listening status for a set of UIDs (or all if empty). */
+export function getScrobbleStatus(uids?: number[]): ScrobbleProgress[] {
+  if (!uids || !uids.length) return [...activeScrobbles.values()]
+  return uids
+    .map((uid) => activeScrobbles.get(uid))
+    .filter((v): v is ScrobbleProgress => !!v)
+}
+
 export interface PartnerResult extends TaskResult {
   eligible?: boolean
   evaluated?: number
@@ -202,20 +223,46 @@ export async function runScrobble(uid: number): Promise<TaskResult> {
 
   const batch = candidates.slice(0, count)
   let ok = 0
-  for (const id of batch) {
-    try {
-      // Realistic play duration: 120-300s with ±15% variation
-      const base = 120 + Math.floor(Math.random() * 180)
-      const jitter = Math.floor(base * (Math.random() * 0.3 - 0.15))
-      const time = base + jitter
-      const res = await scrobble(id, time, user.cookie, '', f)
-      if (res.code === 200 || res.data) ok += 1
-      played.add(id)
-    } catch {
-      /* skip individual song failures */
+
+  // Track progress for real-time status
+  const avgGapSec = 75 // average gap ~75s (30-120s range)
+  activeScrobbles.set(uid, {
+    uid,
+    startedAt: Date.now(),
+    current: 0,
+    total: batch.length,
+    estimatedRemaining: batch.length * avgGapSec,
+  })
+
+  try {
+    for (let i = 0; i < batch.length; i++) {
+      const id = batch[i]!
+      // Update progress
+      activeScrobbles.set(uid, {
+        uid,
+        startedAt: activeScrobbles.get(uid)!.startedAt,
+        current: i + 1,
+        total: batch.length,
+        estimatedRemaining: Math.max(0, (batch.length - i - 1) * avgGapSec),
+      })
+      try {
+        // Realistic play duration: 120-300s with ±15% variation
+        const base = 120 + Math.floor(Math.random() * 180)
+        const jitter = Math.floor(base * (Math.random() * 0.3 - 0.15))
+        const time = base + jitter
+        const res = await scrobble(id, time, user.cookie, '', f)
+        if (res.code === 200 || res.data) ok += 1
+        played.add(id)
+      } catch {
+        /* skip individual song failures */
+      }
+      // Realistic gap between songs: 30-120s (simulates actual listening)
+      if (i < batch.length - 1) {
+        await sleep(30000 + Math.floor(Math.random() * 90000))
+      }
     }
-    // Realistic gap between songs: 30-120s (simulates actual listening)
-    await sleep(30000 + Math.floor(Math.random() * 90000))
+  } finally {
+    activeScrobbles.delete(uid)
   }
 
   const fresh = getUser(uid)

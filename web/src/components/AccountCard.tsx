@@ -12,13 +12,14 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
-import { api, type User, type UserSettings } from '../lib/api'
+import { api, type ScrobbleStatus, type User, type UserSettings } from '../lib/api'
 import { formatNumber, timeAgo } from '../lib/format'
 import { Toggle } from './Toggle'
 
 interface AccountCardProps {
   user: User
   index: number
+  scrobbleStatus?: ScrobbleStatus
   onChange: (user: User) => void
   onRemove: (uid: number) => void
   notify: (message: string, ok?: boolean) => void
@@ -29,6 +30,7 @@ const LEVEL_TARGET = 10000
 export function AccountCard({
   user,
   index,
+  scrobbleStatus,
   onChange,
   onRemove,
   notify,
@@ -109,6 +111,35 @@ export function AccountCard({
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
+
+      {/* real-time listening status */}
+      {scrobbleStatus && (
+        <div className="flex items-center gap-3 rounded-xl border border-accent-200 bg-gradient-to-r from-accent-50 to-brand-50 px-4 py-3">
+          <div className="relative flex h-8 w-8 items-center justify-center">
+            <Headphones className="h-5 w-5 text-accent-600" />
+            <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-accent-500 ring-2 ring-white" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-accent-700">正在听歌中</p>
+            <p className="text-xs text-accent-600/80">
+              第 {scrobbleStatus.current}/{scrobbleStatus.total} 首
+              {scrobbleStatus.estimatedRemaining > 0 && (
+                <span className="ml-1.5 text-slate-500">
+                  · 预计剩余 {Math.ceil(scrobbleStatus.estimatedRemaining / 60)} 分钟
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="h-1.5 w-16 overflow-hidden rounded-full bg-accent-100">
+            <div
+              className="h-full rounded-full bg-accent-500 transition-all duration-700"
+              style={{
+                width: `${Math.round((scrobbleStatus.current / scrobbleStatus.total) * 100)}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* listen progress */}
       <div>
