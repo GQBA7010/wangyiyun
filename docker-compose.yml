@@ -1,0 +1,25 @@
+services:
+  lumen:
+    build: .
+    container_name: lumen
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      # 生产环境务必显式设置一个随机长字符串（更换会使会话与加密数据失效）
+      - SESSION_SECRET=${SESSION_SECRET:-}
+      # 反向代理（Nginx 等）终止 HTTPS 时保持 true；纯 HTTP 内网部署改为 false
+      - COOKIE_SECURE=${COOKIE_SECURE:-true}
+      - TRUST_PROXY=${TRUST_PROXY:-1}
+      # QQ 邮箱 SMTP（注册验证码 + 过期通知）；不配置则关闭邮箱验证
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      # 注册与配额
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}
+      - MAX_ACCOUNTS=${MAX_ACCOUNTS:-0}
+      - MAX_NETEASE_PER_USER=${MAX_NETEASE_PER_USER:-5}
+    volumes:
+      - lumen-data:/app/data
+
+volumes:
+  lumen-data:

@@ -125,6 +125,23 @@ npm run build           # tsc 编译到 dist/
 
 > 端口可通过环境变量 `PORT` 修改；数据目录可通过 `DATA_DIR` 指定（见 `server/.env.example`）。
 
+## 🐳 Docker 部署
+
+已提供多阶段构建的 `Dockerfile` 与 `docker-compose.yml`：
+
+```bash
+# 生成一个随机密钥（首次部署）
+export SESSION_SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+# 可选：QQ 邮箱 SMTP（注册验证码 + 过期邮件通知）
+export SMTP_USER=xxx@qq.com SMTP_PASS=你的授权码
+
+docker compose up -d --build
+```
+
+- 数据持久化在命名卷 `lumen-data`（容器内 `/app/data`，SQLite + 自动备份）。
+- 默认监听 `3000` 端口，建议前置 Nginx 反代并启用 HTTPS；纯内网 HTTP 使用时设 `COOKIE_SECURE=false`。
+- 容器内置健康检查（`/api/health`），异常会自动标记 unhealthy。
+
 ## 🔐 安全（对外公开部署须知）
 
 面向公开使用时请务必：
@@ -162,7 +179,9 @@ npm run build           # tsc 编译到 dist/
 | GET/POST | `/api/scheduler` | 查看 / 开关当前用户的全天自动听歌（`enabled`） |
 | POST | `/api/run-all` | 立即为当前用户的所有账号执行全部已开启的任务 |
 
-> 除 `/api/health` 与 `/api/auth/*` 外，所有接口均需登录；`/api/users/:uid/*` 仅能操作当前登录用户名下的账号。
+> 除 `/api/health` 与 `/api/auth/*` 外，所有接口均需登录；`/api/users/:uid/*` 仅能操作当前登录用户名下的账号。管理员另有 `/api/admin/*` 接口。
+>
+> 完整接口文档（含请求/响应字段、限流、错误码）见 [docs/API.md](docs/API.md)。
 
 ## ⚠️ 说明与免责
 
