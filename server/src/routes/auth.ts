@@ -211,6 +211,8 @@ router.post('/change-password', requireAuth, (req: Request, res: Response) => {
     return
   }
   changePassword(account.id, newPassword)
+  // Other sessions are revoked by the version bump; keep this one alive.
+  setSession(res, account.id)
   res.json({ ok: true })
 })
 

@@ -62,6 +62,30 @@ app.use(express.json({ limit: '256kb' }))
 app.use(express.urlencoded({ extended: true, limit: '256kb' }))
 app.use(cookieParser())
 
+// CSRF protection: cookies are SameSite=Lax; additionally reject state-changing
+// cross-origin requests whose Origin/Referer does not match the request host.
+app.use('/api', (req: Request, res: Response, next: NextFunction) => {
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+    next()
+    return
+  }
+  const source = req.headers.origin ?? req.headers.referer
+  if (!source) {
+    next() // non-browser clients (curl, scripts) don't send Origin
+    return
+  }
+  try {
+    if (new URL(String(source)).host !== req.headers.host) {
+      res.status(403).json({ ok: false, error: '跨站请求被拒绝' })
+      return
+    }
+  } catch {
+    res.status(403).json({ ok: false, error: '跨站请求被拒绝' })
+    return
+  }
+  next()
+})
+
 // Coarse global rate limit as a backstop against abuse.
 app.use(
   '/api',

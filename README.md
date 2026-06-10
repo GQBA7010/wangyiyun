@@ -137,7 +137,7 @@ npm run build           # tsc 编译到 dist/
 - **启用 HTTPS**：保持 `COOKIE_SECURE=true`（默认），反代时设 `TRUST_PROXY=1`。
 - **按需关闭注册**：如不想对外开放注册，设 `ALLOW_REGISTRATION=false`，或用 `MAX_ACCOUNTS` 限制名额。
 
-内置安全措施：Helmet 安全响应头与 CSP、登录与全局请求**速率限制**、scrypt 密码哈希、httpOnly 签名会话 Cookie、登录态 **AES-256-GCM** 落盘加密、请求体大小限制、所有接口强制鉴权且**按归属隔离**（无法越权访问他人账号）。完整环境变量见 `server/.env.example`。
+内置安全措施：Helmet 安全响应头与 CSP、登录与全局请求**速率限制**、scrypt 密码哈希、httpOnly 签名会话 Cookie（SameSite=Lax）、**CSRF 防护**（拒绝跨站来源的写请求）、**会话吊销**（修改/重置密码后旧会话立即失效）、登录态 **AES-256-GCM** 落盘加密、请求体大小限制、所有接口强制鉴权且**按归属隔离**（无法越权访问他人账号）。完整环境变量见 `server/.env.example`。
 
 ## 🔌 API 速览
 

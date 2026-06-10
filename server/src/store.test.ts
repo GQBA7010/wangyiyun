@@ -29,6 +29,13 @@ describe('platform accounts', () => {
     expect(found?.passwordHash.startsWith('scrypt$')).toBe(true)
   })
 
+  it('bumps sessionVersion on password change (revokes old sessions)', () => {
+    const acc = store.createAccount({ username: 'sv_user', password: 'pw-12345678' })
+    expect(store.getAccountById(acc.id)?.sessionVersion).toBe(0)
+    store.changePassword(acc.id, 'pw-87654321')
+    expect(store.getAccountById(acc.id)?.sessionVersion).toBe(1)
+  })
+
   it('toggles the per-account scheduler', () => {
     const acc = store.createAccount({ username: 'sched_user', password: 'pw-12345678' })
     expect(store.getAccountScheduler(acc.id).enabled).toBe(false)

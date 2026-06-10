@@ -67,6 +67,7 @@ interface AccountRow {
   scheduler_json: string
   role: string
   disabled: number
+  session_version: number
 }
 
 interface NeteaseUserRow {
@@ -140,6 +141,7 @@ export function load(): AppData {
         if (!acc.role) acc.role = firstAccount ? 'admin' : 'user'
         if (acc.disabled === undefined) acc.disabled = false
         if (acc.email === undefined) acc.email = ''
+        if (acc.sessionVersion === undefined) acc.sessionVersion = 0
         firstAccount = false
       }
       cache = data
@@ -174,6 +176,7 @@ export function load(): AppData {
       scheduler: JSON.parse(row.scheduler_json) as SchedulerState,
       role: (row.role as AccountRole) || 'user',
       disabled: !!row.disabled,
+      sessionVersion: row.session_version || 0,
     }
   }
 
@@ -202,8 +205,8 @@ function persist(): void {
 
   const upsertAccount = db.prepare(
     `INSERT INTO accounts
-       (id, username, username_lower, password_hash, email, created_at, last_login_at, scheduler_json, role, disabled)
-     VALUES (@id, @username, @usernameLower, @passwordHash, @email, @createdAt, @lastLoginAt, @scheduler, @role, @disabled)
+       (id, username, username_lower, password_hash, email, created_at, last_login_at, scheduler_json, role, disabled, session_version)
+     VALUES (@id, @username, @usernameLower, @passwordHash, @email, @createdAt, @lastLoginAt, @scheduler, @role, @disabled, @sessionVersion)
      ON CONFLICT(id) DO UPDATE SET
        username = excluded.username,
        username_lower = excluded.username_lower,
@@ -213,7 +216,8 @@ function persist(): void {
        last_login_at = excluded.last_login_at,
        scheduler_json = excluded.scheduler_json,
        role = excluded.role,
-       disabled = excluded.disabled`,
+       disabled = excluded.disabled,
+       session_version = excluded.session_version`,
   )
   const upsertNetease = db.prepare(
     `INSERT INTO netease_users (uid, owner_id, data_json)
@@ -245,6 +249,7 @@ function persist(): void {
         scheduler: JSON.stringify(acc.scheduler),
         role: acc.role || 'user',
         disabled: acc.disabled ? 1 : 0,
+        sessionVersion: acc.sessionVersion || 0,
       })
     }
 
@@ -324,6 +329,7 @@ export function createAccount({
     scheduler: { enabled: false },
     role: isFirstAccount ? 'admin' : 'user',
     disabled: false,
+    sessionVersion: 0,
   }
   data.accounts[id] = account
   save()
@@ -489,6 +495,8 @@ export function changePassword(id: string, newPassword: string): boolean {
   const acc = getAccountById(id)
   if (!acc) return false
   acc.passwordHash = hashPassword(newPassword)
+  // Revoke every existing session for this account.
+  acc.sessionVersion = (acc.sessionVersion || 0) + 1
   save()
   return true
 }

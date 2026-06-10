@@ -7,7 +7,8 @@ import type { NeteaseUser, PlatformAccount } from '../types.js'
 /** Issue a signed session cookie for the given account id. */
 export function setSession(res: Response, accountId: string): void {
   const exp = Date.now() + config.sessionMaxAgeMs
-  const token = signToken({ sub: accountId, exp }, getSecret())
+  const sv = getAccountById(accountId)?.sessionVersion ?? 0
+  const token = signToken({ sub: accountId, exp, sv }, getSecret())
   res.cookie(config.sessionCookieName, token, {
     httpOnly: true,
     sameSite: 'lax',
@@ -28,7 +29,11 @@ export function currentAccount(req: Request): PlatformAccount | null {
   if (!token) return null
   const payload = verifyToken(token, getSecret())
   if (!payload?.sub) return null
-  return getAccountById(payload.sub)
+  const account = getAccountById(payload.sub)
+  if (!account) return null
+  // Sessions issued before a password change/reset are revoked.
+  if ((payload.sv ?? 0) !== (account.sessionVersion ?? 0)) return null
+  return account
 }
 
 /** Express middleware: require a valid session, else 401. */

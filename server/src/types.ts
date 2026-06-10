@@ -100,6 +100,8 @@ export interface PlatformAccount {
   role: AccountRole
   /** Disabled accounts cannot log in or use the API. */
   disabled: boolean
+  /** Bumped on password change/reset to invalidate all existing sessions. */
+  sessionVersion: number
 }
 
 /** A platform account with its password hash stripped, safe to send to clients. */
@@ -123,4 +125,6 @@ export interface AppData {
 export interface SessionPayload {
   sub: string
   exp: number
+  /** Session version at issue time; mismatch with the account revokes it. */
+  sv?: number
 }

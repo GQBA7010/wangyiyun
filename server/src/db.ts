@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS accounts (
   last_login_at  INTEGER NOT NULL,
   scheduler_json TEXT NOT NULL DEFAULT '{"enabled":false}',
   role           TEXT NOT NULL DEFAULT 'user',
-  disabled       INTEGER NOT NULL DEFAULT 0
+  disabled       INTEGER NOT NULL DEFAULT 0,
+  session_version INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS netease_users (
   uid       TEXT PRIMARY KEY,
@@ -59,6 +60,9 @@ function migrate(d: Database.Database): void {
   }
   if (!cols.includes('email')) {
     d.exec("ALTER TABLE accounts ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+  }
+  if (!cols.includes('session_version')) {
+    d.exec('ALTER TABLE accounts ADD COLUMN session_version INTEGER NOT NULL DEFAULT 0')
   }
 }
 
