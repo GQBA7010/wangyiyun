@@ -10,6 +10,7 @@ import {
 } from '../store.js'
 import { verifyPassword } from '../security/crypto.js'
 import { clearSession, currentAccount, setSession } from '../security/auth.js'
+import { createCaptcha, verifyCaptcha } from '../security/captcha.js'
 
 const router = Router()
 
@@ -34,6 +35,13 @@ function validateCredentials(username, password) {
   return null
 }
 
+// Issue a fresh image CAPTCHA challenge. Throttled by the global /api limiter.
+router.get('/captcha', (_req, res) => {
+  const { id, svg } = createCaptcha()
+  res.set('Cache-Control', 'no-store')
+  res.json({ ok: true, captchaId: id, svg })
+})
+
 router.get('/me', (req, res) => {
   const account = currentAccount(req)
   res.json({
@@ -46,6 +54,9 @@ router.get('/me', (req, res) => {
 router.post('/register', authLimiter, (req, res) => {
   if (!config.allowRegistration) {
     return res.status(403).json({ ok: false, error: '注册已关闭' })
+  }
+  if (!verifyCaptcha(req.body?.captchaId, String(req.body?.captcha || ''))) {
+    return res.status(400).json({ ok: false, error: '验证码错误或已过期', captcha: true })
   }
   const username = String(req.body?.username || '').trim()
   const password = String(req.body?.password || '')
@@ -65,6 +76,9 @@ router.post('/register', authLimiter, (req, res) => {
 })
 
 router.post('/login', authLimiter, (req, res) => {
+  if (!verifyCaptcha(req.body?.captchaId, String(req.body?.captcha || ''))) {
+    return res.status(400).json({ ok: false, error: '验证码错误或已过期', captcha: true })
+  }
   const username = String(req.body?.username || '').trim()
   const password = String(req.body?.password || '')
   if (!username || !password) {

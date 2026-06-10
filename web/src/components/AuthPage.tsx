@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Loader2, Lock, LogIn, Music4, UserPlus } from 'lucide-react'
+import { useCallback, useEffect, useState } from 'react'
+import { Loader2, Lock, LogIn, Music4, RefreshCw, UserPlus } from 'lucide-react'
 import { api, type Account } from '../lib/api'
 
 interface AuthPageProps {
@@ -13,8 +13,30 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
   const [mode, setMode] = useState<Mode>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [captcha, setCaptcha] = useState('')
+  const [captchaId, setCaptchaId] = useState('')
+  const [captchaSvg, setCaptchaSvg] = useState('')
+  const [captchaLoading, setCaptchaLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+
+  const loadCaptcha = useCallback(async () => {
+    setCaptchaLoading(true)
+    setCaptcha('')
+    try {
+      const { captchaId, svg } = await api.captcha()
+      setCaptchaId(captchaId)
+      setCaptchaSvg(svg)
+    } catch {
+      setCaptchaSvg('')
+    } finally {
+      setCaptchaLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadCaptcha()
+  }, [loadCaptcha])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,11 +45,13 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
     try {
       const { account } =
         mode === 'login'
-          ? await api.login(username.trim(), password)
-          : await api.register(username.trim(), password)
+          ? await api.login(username.trim(), password, captchaId, captcha)
+          : await api.register(username.trim(), password, captchaId, captcha)
       onAuthed(account)
     } catch (err) {
       setError((err as Error).message)
+      // The challenge is single-use server-side; always issue a fresh one.
+      loadCaptcha()
     } finally {
       setBusy(false)
     }
@@ -39,7 +63,7 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-mesh px-4 py-12">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-mesh px-4 py-12 [padding-bottom:env(safe-area-inset-bottom)] [padding-top:env(safe-area-inset-top)]">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-brand-500 to-accent-500 shadow-glow">
@@ -57,7 +81,7 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
           </p>
         </div>
 
-        <div className="glass p-7 shadow-card">
+        <div className="glass p-6 shadow-card sm:p-7">
           {/* tabs */}
           <div className="mb-6 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
             <TabButton active={mode === 'login'} onClick={() => switchMode('login')}>
@@ -78,6 +102,9 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="3–32 位字母 / 数字 / 中文"
                 className="auth-input"
                 required
@@ -93,6 +120,43 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
                 className="auth-input"
                 required
               />
+            </Field>
+            <Field label="验证码">
+              <div className="flex items-stretch gap-3">
+                <input
+                  value={captcha}
+                  onChange={(e) => setCaptcha(e.target.value)}
+                  inputMode="text"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  maxLength={6}
+                  placeholder="输入右侧字符"
+                  className="auth-input flex-1 uppercase tracking-[0.3em]"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={loadCaptcha}
+                  title="看不清？点击刷新"
+                  aria-label="刷新验证码"
+                  className="group relative flex h-[46px] w-[130px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-100 transition-colors hover:border-brand-300"
+                >
+                  {captchaLoading || !captchaSvg ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                  ) : (
+                    <span
+                      className="pointer-events-none flex items-center justify-center transition-opacity group-hover:opacity-80"
+                      // SVG is generated server-side by a trusted module.
+                      dangerouslySetInnerHTML={{ __html: captchaSvg }}
+                    />
+                  )}
+                  <span className="absolute bottom-0.5 right-1 rounded bg-white/70 px-1 text-[9px] text-slate-400 opacity-0 transition-opacity group-hover:opacity-100">
+                    <RefreshCw className="inline h-2.5 w-2.5" />
+                  </span>
+                </button>
+              </div>
             </Field>
 
             {error && (

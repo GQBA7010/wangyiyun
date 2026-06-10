@@ -67,8 +67,9 @@
     @apply text-xs font-medium uppercase tracking-wider text-slate-400;
   }
 
+  /* text-base (16px) keeps iOS Safari from auto-zooming on focus. */
   .auth-input {
-    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition-all duration-200 placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15;
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-base text-slate-900 outline-none transition-all duration-200 placeholder:text-base placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15;
   }
 
   .skeleton {

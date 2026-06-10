@@ -71,15 +71,16 @@ export const api = {
   // --- auth ---
   me: () =>
     http<{ account: Account | null; allowRegistration: boolean }>('/api/auth/me'),
-  register: (username: string, password: string) =>
+  captcha: () => http<{ captchaId: string; svg: string }>('/api/auth/captcha'),
+  register: (username: string, password: string, captchaId: string, captcha: string) =>
     http<{ account: Account }>('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, captchaId, captcha }),
     }),
-  login: (username: string, password: string) =>
+  login: (username: string, password: string, captchaId: string, captcha: string) =>
     http<{ account: Account }>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, captchaId, captcha }),
     }),
   logout: () => http('/api/auth/logout', { method: 'POST' }),
 
