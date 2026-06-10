@@ -145,7 +145,7 @@ npm run build           # tsc 编译到 dist/
 | --- | --- | --- |
 | POST | `/api/login/qr/key` | 生成扫码登录二维码 |
 | GET | `/api/login/qr/check?key=` | 轮询扫码状态（801 等待 / 802 已扫 / 803 成功） |
-| GET | `/api/health` | 健康检查（无需登录） |
+| GET | `/api/health` | 健康检查（无需登录；返回 uptime / 数据库状态 / 调度器状态 / SMTP 是否启用，数据库异常时返回 503） |
 | POST | `/api/auth/register` | 注册并登录 |
 | POST | `/api/auth/login` | 登录 |
 | POST | `/api/auth/logout` | 退出登录 |

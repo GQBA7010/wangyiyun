@@ -11,6 +11,16 @@ import type { NeteaseUser } from './types.js'
 
 let loopActive = false // the continuous loop is currently running
 let busy = false // a task batch is currently executing (manual or loop)
+let lastCycleAt = 0 // when the last full loop cycle finished
+
+/** Snapshot of scheduler state, exposed via the health endpoint. */
+export function schedulerStatus(): {
+  loopActive: boolean
+  busy: boolean
+  lastCycleAt: number
+} {
+  return { loopActive, busy, lastCycleAt }
+}
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const CYCLE_GAP_MS = 5000 // short breather between full listen cycles
@@ -18,6 +28,31 @@ const IDLE_GAP_MS = 15000 // longer wait when nobody has auto-listen enabled
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
+}
+
+// Transient failures (network hiccups, upstream 5xx) are retried with
+// increasing delays before giving up for the current cycle.
+const RETRY_DELAYS_MS = [5_000, 30_000]
+
+async function withRetry(
+  label: string,
+  uid: number,
+  fn: () => Promise<unknown>,
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await fn()
+      return
+    } catch (e) {
+      if (attempt >= RETRY_DELAYS_MS.length) throw e
+      const delay = RETRY_DELAYS_MS[attempt] ?? 30_000
+      logger.warn(
+        { uid, task: label, attempt: attempt + 1, err: errMessage(e) },
+        'task failed, retrying',
+      )
+      await sleep(delay)
+    }
+  }
 }
 
 /** True if a timestamp falls within today (Asia/Shanghai). */
@@ -73,10 +108,10 @@ async function continuousLoop(): Promise<void> {
       try {
         const fresh = getUser(user.uid)
         if (user.settings.autoSignin && !isToday(fresh?.lastSignin?.at)) {
-          await runSignin(user.uid)
+          await withRetry('signin', user.uid, () => runSignin(user.uid))
         }
         if (user.settings.autoTasks && !isToday(fresh?.lastYunbei?.at)) {
-          await runYunbeiTasks(user.uid)
+          await withRetry('yunbei', user.uid, () => runYunbeiTasks(user.uid))
         }
         // Music-partner evaluation runs every cycle ("刷新了就评价"), but skip
         // accounts we already know lack qualification (checked today) so the
@@ -85,11 +120,11 @@ async function continuousLoop(): Promise<void> {
           const ineligibleToday =
             fresh?.lastPartner?.eligible === false && isToday(fresh?.lastPartner?.at)
           if (!ineligibleToday) {
-            await runPartnerEvaluate(user.uid)
+            await withRetry('partner', user.uid, () => runPartnerEvaluate(user.uid))
           }
         }
         if (user.settings.autoScrobble) {
-          await runScrobble(user.uid)
+          await withRetry('scrobble', user.uid, () => runScrobble(user.uid))
         }
       } catch (e) {
         logger.error({ uid: user.uid, err: errMessage(e) }, 'scheduler loop failed')
@@ -97,6 +132,7 @@ async function continuousLoop(): Promise<void> {
         busy = false
       }
     }
+    lastCycleAt = Date.now()
     await sleep(CYCLE_GAP_MS)
   }
 }

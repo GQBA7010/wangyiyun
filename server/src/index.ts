@@ -13,8 +13,8 @@ import { logger } from './logger.js'
 import adminRouter from './routes/admin.js'
 import apiRouter from './routes/api.js'
 import authRouter from './routes/auth.js'
-import { applySchedule } from './scheduler.js'
-import { startBackups } from './db.js'
+import { applySchedule, schedulerStatus } from './scheduler.js'
+import { dbHealthy, startBackups } from './db.js'
 import { load } from './store.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -76,7 +76,15 @@ app.use(
 
 // --- Routes ---------------------------------------------------------------
 app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({ ok: true, ts: Date.now() })
+  const db = dbHealthy()
+  res.status(db ? 200 : 503).json({
+    ok: db,
+    ts: Date.now(),
+    uptime: Math.floor(process.uptime()),
+    db: db ? 'up' : 'down',
+    scheduler: schedulerStatus(),
+    smtp: config.smtpEnabled,
+  })
 })
 app.use('/api/auth', authRouter)
 app.use('/api/admin', adminRouter)

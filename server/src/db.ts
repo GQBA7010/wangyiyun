@@ -66,6 +66,16 @@ export function dbFilePath(): string {
   return DB_FILE
 }
 
+/** Lightweight connectivity probe used by the health endpoint. */
+export function dbHealthy(): boolean {
+  try {
+    getDb().prepare('SELECT 1').get()
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Close the database (used by tests). */
 export function closeDb(): void {
   if (db) {
