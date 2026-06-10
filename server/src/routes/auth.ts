@@ -7,6 +7,7 @@ import {
   changePassword,
   countAccounts,
   createAccount,
+  getAccountByEmail,
   getAccountByUsername,
   publicAccount,
   touchLogin,
@@ -184,6 +185,67 @@ router.post('/login', authLimiter, (req: Request, res: Response) => {
   touchLogin(account.id)
   setSession(res, account.id)
   res.json({ ok: true, account: publicAccount(account) })
+})
+
+// --- Forgot password (email verification code reset) ---
+
+// Send a password-reset code to the email bound to an account.
+router.post('/forgot-code', emailCodeLimiter, (req: Request, res: Response): void => {
+  if (!config.smtpEnabled) {
+    res.status(400).json({ ok: false, error: '邮件服务未配置，请联系管理员重置密码' })
+    return
+  }
+  const { email, captchaId, captcha } = parseBody(req)
+  if (!verifyCaptcha(captchaId, captcha)) {
+    res.status(400).json({ ok: false, error: '验证码错误或已过期', captcha: true })
+    return
+  }
+  const clean = email.trim().toLowerCase()
+  if (!EMAIL_RE.test(clean)) {
+    res.status(400).json({ ok: false, error: '邮箱格式不正确' })
+    return
+  }
+  if (!getAccountByEmail(clean)) {
+    res.status(404).json({ ok: false, error: '该邮箱未绑定任何账号' })
+    return
+  }
+  sendVerificationCode(clean, '找回密码')
+    .then((result) => {
+      if (result.ok) res.json({ ok: true, codeId: result.codeId })
+      else res.status(400).json({ ok: false, error: result.error })
+    })
+    .catch(() => res.status(500).json({ ok: false, error: '发送失败，请稍后再试' }))
+})
+
+// Reset the password with the emailed code; revokes all existing sessions.
+router.post('/reset-password', authLimiter, (req: Request, res: Response): void => {
+  if (!config.smtpEnabled) {
+    res.status(400).json({ ok: false, error: '邮件服务未配置，请联系管理员重置密码' })
+    return
+  }
+  const { email, emailCodeId, emailCode, password } = parseBody(req)
+  const clean = email.trim().toLowerCase()
+  if (!EMAIL_RE.test(clean)) {
+    res.status(400).json({ ok: false, error: '邮箱格式不正确' })
+    return
+  }
+  if (password.length < config.minPasswordLength) {
+    res
+      .status(400)
+      .json({ ok: false, error: `新密码至少需 ${config.minPasswordLength} 位` })
+    return
+  }
+  if (!verifyCode(emailCodeId, emailCode.trim(), clean)) {
+    res.status(400).json({ ok: false, error: '邮箱验证码错误或已过期' })
+    return
+  }
+  const account = getAccountByEmail(clean)
+  if (!account) {
+    res.status(404).json({ ok: false, error: '该邮箱未绑定任何账号' })
+    return
+  }
+  changePassword(account.id, password)
+  res.json({ ok: true, username: account.username })
 })
 
 // Change password (authenticated users).

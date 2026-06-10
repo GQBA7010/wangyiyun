@@ -3,9 +3,10 @@ import { config } from './config.js'
 import { logger } from './logger.js'
 import { applySchedule } from './scheduler.js'
 import { startBackups } from './db.js'
-import { load } from './store.js'
+import { ensureDefaultAdmin, load } from './store.js'
 
 load()
+ensureDefaultAdmin()
 startBackups()
 applySchedule()
 

@@ -23,7 +23,9 @@
 | GET | `/captcha` | 获取图形验证码 `{ captchaId, svg }`（一次性、5 分钟有效） |
 | GET | `/me` | 当前登录账号 `{ account\|null, allowRegistration, emailVerification }` |
 | POST | `/email-code` | 发送注册邮箱验证码。Body: `{ email, captchaId, captcha }` → `{ codeId }`（启用 SMTP 时可用；60 秒重发冷却、10 分钟有效） |
-| POST | `/register` | 注册。Body: `{ username, password, captchaId, captcha }`；启用 SMTP 时还需 `{ email, emailCodeId, emailCode }`。首个注册账号自动成为管理员 |
+| POST | `/register` | 注册。Body: `{ username, password, captchaId, captcha }`；启用 SMTP 时还需 `{ email, emailCodeId, emailCode }`。注册账号均为普通用户 |
+| POST | `/forgot-code` | 发送找回密码邮箱验证码。Body: `{ email, captchaId, captcha }` → `{ codeId }`（邮箱需已绑定账号；启用 SMTP 时可用） |
+| POST | `/reset-password` | 邮箱验证码重置密码。Body: `{ email, emailCodeId, emailCode, password }`；成功后该账号所有旧会话失效 |
 | POST | `/login` | 登录。Body: `{ username, password, captchaId, captcha }` |
 | POST | `/change-password` | 修改密码（需登录）。Body: `{ oldPassword, newPassword }`；成功后其他会话全部失效，当前会话自动续签 |
 | POST | `/logout` | 退出登录 |
@@ -48,6 +50,8 @@
 | POST | `/run-all` | 立即触发本账号全部已启用任务（异步执行） |
 
 ## 管理后台 `/api/admin`（需管理员）
+
+管理后台页面入口为 `/admin`（与用户端入口分离）。首次启动时自动创建默认管理员 `adminYYY` / `123456`，部署后请立即在后台右上角「修改密码」中更换。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

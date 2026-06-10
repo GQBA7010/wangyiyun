@@ -53,6 +53,7 @@ export function storeCode(email: string, code: string, ttlMs = CODE_TTL_MS): str
  */
 export async function sendVerificationCode(
   email: string,
+  purpose: '注册' | '找回密码' = '注册',
 ): Promise<{ ok: true; codeId: string } | { ok: false; error: string }> {
   const t = getTransporter()
   if (!t) return { ok: false, error: '邮件服务未配置' }
@@ -70,10 +71,10 @@ export async function sendVerificationCode(
     await t.sendMail({
       from: `"${config.smtpFromName}" <${config.smtpUser}>`,
       to: email,
-      subject: `【${config.smtpFromName}】注册验证码`,
+      subject: `【${config.smtpFromName}】${purpose}验证码`,
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:24px">
-          <h2 style="color:#4f46e5">Lumen 注册验证码</h2>
+          <h2 style="color:#4f46e5">Lumen ${purpose}验证码</h2>
           <p>你的验证码是：</p>
           <p style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#1e293b;margin:16px 0">${code}</p>
           <p style="color:#64748b;font-size:14px">验证码 10 分钟内有效，请勿泄露给他人。</p>

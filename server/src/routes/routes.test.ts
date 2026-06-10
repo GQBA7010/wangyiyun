@@ -18,6 +18,7 @@ beforeAll(async () => {
   process.env.COOKIE_SECURE = 'false'
   store = await import('../store.js')
   store.load()
+  store.ensureDefaultAdmin()
   const { createApp } = await import('../app.js')
   app = createApp()
 })
@@ -62,15 +63,26 @@ describe('health endpoint', () => {
 })
 
 describe('auth routes', () => {
-  it('registers (first account becomes admin) and sets a session cookie', async () => {
+  it('seeds the built-in default admin', async () => {
+    const res = await login(store.DEFAULT_ADMIN_USERNAME, store.DEFAULT_ADMIN_PASSWORD)
+    expect(res.status).toBe(200)
+    expect(res.body.account.role).toBe('admin')
+  })
+
+  it('registers a regular user (never admin) and sets a session cookie', async () => {
     const captcha = await solveCaptcha()
     const res = await request(app)
       .post('/api/auth/register')
       .send({ username: 'first_admin', password: 'pw-12345678', ...captcha })
     expect(res.status).toBe(200)
-    expect(res.body.account.role).toBe('admin')
+    expect(res.body.account.role).toBe('user')
     expect(res.body.account.passwordHash).toBeUndefined()
     expect(res.headers['set-cookie']?.[0]).toContain('HttpOnly')
+  })
+
+  it('rejects password reset when mail is not configured', async () => {
+    const res = await request(app).post('/api/auth/forgot-code').send({ email: 'a@b.c' })
+    expect(res.status).toBe(400)
   })
 
   it('rejects registration with a wrong captcha', async () => {
@@ -168,9 +180,9 @@ describe('admin routes', () => {
   })
 
   it('lets the admin list users and disable an account', async () => {
-    const cookies = (await login('first_admin', 'pw-12345678')).headers[
-      'set-cookie'
-    ] as unknown as string[]
+    const cookies = (
+      await login(store.DEFAULT_ADMIN_USERNAME, store.DEFAULT_ADMIN_PASSWORD)
+    ).headers['set-cookie'] as unknown as string[]
     const list = await request(app).get('/api/admin/accounts').set('Cookie', cookies)
     expect(list.status).toBe(200)
     expect(list.body.accounts.length).toBeGreaterThanOrEqual(3)

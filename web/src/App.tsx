@@ -1,146 +1,221 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, Key, LogOut, Play, Plus, Settings, Shield, Sparkles, Users } from 'lucide-react'
-import { ApiError, api, type Account, type Scheduler, type User } from './lib/api'
-import { formatNumber } from './lib/format'
-import { AccountCard } from './components/AccountCard'
-import { AdminPage } from './components/AdminPage'
-import { AuthPage } from './components/AuthPage'
-import { ChangePasswordModal } from './components/ChangePasswordModal'
-import { ConfirmDialog } from './components/ConfirmDialog'
-import { QRLogin } from './components/QRLogin'
-import { SchedulerBar } from './components/SchedulerBar'
-import { ToastStack, type ToastItem } from './components/Toast'
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  Key,
+  LogOut,
+  Play,
+  Plus,
+  Shield,
+  Sparkles,
+  Users,
+} from "lucide-react";
+import {
+  ApiError,
+  api,
+  type Account,
+  type Scheduler,
+  type User,
+} from "./lib/api";
+import { formatNumber } from "./lib/format";
+import { AccountCard } from "./components/AccountCard";
+import { AdminPage } from "./components/AdminPage";
+import { AuthPage } from "./components/AuthPage";
+import { ChangePasswordModal } from "./components/ChangePasswordModal";
+import { ConfirmDialog } from "./components/ConfirmDialog";
+import { QRLogin } from "./components/QRLogin";
+import { SchedulerBar } from "./components/SchedulerBar";
+import { ToastStack, type ToastItem } from "./components/Toast";
+
+// The admin console lives on a separate entry path, e.g. https://host/admin
+const IS_ADMIN_PATH = window.location.pathname.startsWith("/admin");
 
 export default function App() {
-  const [booting, setBooting] = useState(true)
-  const [account, setAccount] = useState<Account | null>(null)
-  const [allowRegistration, setAllowRegistration] = useState(true)
-  const [emailVerification, setEmailVerification] = useState(false)
+  const [booting, setBooting] = useState(true);
+  const [account, setAccount] = useState<Account | null>(null);
+  const [allowRegistration, setAllowRegistration] = useState(true);
+  const [emailVerification, setEmailVerification] = useState(false);
 
-  const [users, setUsers] = useState<User[]>([])
-  const [scheduler, setScheduler] = useState<Scheduler>({ enabled: false })
-  const [showLogin, setShowLogin] = useState(false)
-  const [showChangePw, setShowChangePw] = useState(false)
-  const [showAdmin, setShowAdmin] = useState(false)
-  const [pendingDelete, setPendingDelete] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [toasts, setToasts] = useState<ToastItem[]>([])
+  const [users, setUsers] = useState<User[]>([]);
+  const [scheduler, setScheduler] = useState<Scheduler>({ enabled: false });
+  const [showLogin, setShowLogin] = useState(false);
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const notify = useCallback((message: string, ok = true) => {
-    setToasts((t) => [...t, { id: Date.now() + Math.random(), message, ok }])
-  }, [])
+    setToasts((t) => [...t, { id: Date.now() + Math.random(), message, ok }]);
+  }, []);
   const dismiss = useCallback((id: number) => {
-    setToasts((t) => t.filter((x) => x.id !== id))
-  }, [])
+    setToasts((t) => t.filter((x) => x.id !== id));
+  }, []);
 
   // Treat an expired/invalid session (401) as a logout.
-  const handleError = useCallback((e: unknown) => {
-    if (e instanceof ApiError && e.status === 401) {
-      setAccount(null)
-      return
-    }
-    notify((e as Error).message, false)
-  }, [notify])
+  const handleError = useCallback(
+    (e: unknown) => {
+      if (e instanceof ApiError && e.status === 401) {
+        setAccount(null);
+        return;
+      }
+      notify((e as Error).message, false);
+    },
+    [notify],
+  );
 
   // Bootstrap: resolve current session.
   useEffect(() => {
     api
       .me()
       .then(({ account, allowRegistration, emailVerification }) => {
-        setAccount(account)
-        setAllowRegistration(allowRegistration)
-        setEmailVerification(emailVerification)
+        setAccount(account);
+        setAllowRegistration(allowRegistration);
+        setEmailVerification(emailVerification);
       })
       .catch(() => setAccount(null))
-      .finally(() => setBooting(false))
-  }, [])
+      .finally(() => setBooting(false));
+  }, []);
 
   const load = useCallback(async () => {
-    setLoading(true)
+    setLoading(true);
     try {
       const [{ users: u }, { scheduler: s }] = await Promise.all([
         api.listUsers(),
         api.getScheduler(),
-      ])
-      setUsers(u)
-      setScheduler(s)
+      ]);
+      setUsers(u);
+      setScheduler(s);
     } catch (e) {
-      handleError(e)
+      handleError(e);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [handleError])
+  }, [handleError]);
 
   useEffect(() => {
-    if (account) load()
-  }, [account, load])
+    if (account && !IS_ADMIN_PATH) load();
+  }, [account, load]);
 
   const upsertUser = (user: User) =>
     setUsers((list) => {
-      const idx = list.findIndex((x) => Number(x.uid) === Number(user.uid))
-      if (idx === -1) return [...list, user]
-      const next = [...list]
-      next[idx] = user
-      return next
-    })
+      const idx = list.findIndex((x) => Number(x.uid) === Number(user.uid));
+      if (idx === -1) return [...list, user];
+      const next = [...list];
+      next[idx] = user;
+      return next;
+    });
 
   const confirmRemove = async () => {
-    if (!pendingDelete) return
-    const uid = pendingDelete.uid
-    setPendingDelete(null)
-    setUsers((list) => list.filter((x) => x.uid !== uid))
+    if (!pendingDelete) return;
+    const uid = pendingDelete.uid;
+    setPendingDelete(null);
+    setUsers((list) => list.filter((x) => x.uid !== uid));
     try {
-      await api.removeUser(uid)
-      notify('已移除账号', true)
+      await api.removeUser(uid);
+      notify("已移除账号", true);
     } catch (e) {
-      handleError(e)
+      handleError(e);
     }
-  }
+  };
 
   const logout = async () => {
     try {
-      await api.logout()
+      await api.logout();
     } catch {
       /* ignore */
     }
-    setAccount(null)
-    setUsers([])
-  }
+    setAccount(null);
+    setUsers([]);
+  };
 
   const stats = useMemo(() => {
-    const totalListen = users.reduce((s, u) => s + (u.listenSongs ?? 0), 0)
+    const totalListen = users.reduce((s, u) => s + (u.listenSongs ?? 0), 0);
     const active = users.filter(
       (u) =>
         u.settings.autoSignin ||
         u.settings.autoScrobble ||
         u.settings.autoTasks ||
         u.settings.autoPartner,
-    ).length
-    return { accounts: users.length, active, totalListen }
-  }, [users])
+    ).length;
+    return { accounts: users.length, active, totalListen };
+  }, [users]);
 
   if (booting) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-mesh">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500" />
       </div>
-    )
+    );
   }
 
   if (!account) {
     return (
       <>
         <AuthPage
+          adminMode={IS_ADMIN_PATH}
           allowRegistration={allowRegistration}
           emailVerification={emailVerification}
           onAuthed={(acc) => {
-            setAccount(acc)
-            notify(`欢迎回来，${acc.username}`, true)
+            setAccount(acc);
+            notify(`欢迎回来，${acc.username}`, true);
           }}
         />
         <ToastStack toasts={toasts} dismiss={dismiss} />
       </>
-    )
+    );
+  }
+
+  if (IS_ADMIN_PATH) {
+    if (account.role !== "admin") {
+      return (
+        <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-mesh px-4 text-center">
+          <Shield className="h-10 w-10 text-slate-300" />
+          <p className="text-lg font-bold text-slate-900">当前账号不是管理员</p>
+          <p className="text-sm text-slate-500">请使用管理员账号登录管理后台</p>
+          <button onClick={logout} className="btn-primary">
+            <LogOut className="h-4 w-4" /> 退出登录
+          </button>
+          <ToastStack toasts={toasts} dismiss={dismiss} />
+        </div>
+      );
+    }
+    return (
+      <div className="min-h-dvh bg-mesh">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-extrabold text-slate-900">
+              <Shield className="mr-2 inline h-6 w-6 text-brand-600" />
+              Lumen 管理后台
+            </h2>
+            <div className="flex items-center gap-2">
+              <span className="hidden items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-soft sm:inline-flex">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-brand-500 to-accent-500 text-[11px] font-bold text-white">
+                  {account.username.slice(0, 1).toUpperCase()}
+                </span>
+                {account.username}
+              </span>
+              <button
+                onClick={() => setShowChangePw(true)}
+                className="btn-ghost"
+                title="修改密码"
+              >
+                <Key className="h-4 w-4" /> 修改密码
+              </button>
+              <button onClick={logout} className="btn-ghost" title="退出登录">
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <AdminPage currentAccountId={account.id} notify={notify} />
+        </div>
+        {showChangePw && (
+          <ChangePasswordModal
+            onClose={() => setShowChangePw(false)}
+            notify={notify}
+          />
+        )}
+        <ToastStack toasts={toasts} dismiss={dismiss} />
+      </div>
+    );
   }
 
   return (
@@ -155,7 +230,7 @@ export default function App() {
             <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
               Lumen
               <span className="bg-gradient-to-r from-brand-600 to-accent-500 bg-clip-text text-transparent">
-                {' '}
+                {" "}
                 控制台
               </span>
             </h1>
@@ -174,11 +249,11 @@ export default function App() {
               <button
                 onClick={async () => {
                   try {
-                    const { message } = await api.runAll()
-                    notify(message, true)
-                    setTimeout(load, 2000)
+                    const { message } = await api.runAll();
+                    notify(message, true);
+                    setTimeout(load, 2000);
                   } catch (e) {
-                    handleError(e)
+                    handleError(e);
                   }
                 }}
                 className="btn-ghost"
@@ -189,18 +264,13 @@ export default function App() {
             <button onClick={() => setShowLogin(true)} className="btn-primary">
               <Plus className="h-4 w-4" /> 添加账号
             </button>
-            <button onClick={() => setShowChangePw(true)} className="btn-ghost" title="修改密码">
+            <button
+              onClick={() => setShowChangePw(true)}
+              className="btn-ghost"
+              title="修改密码"
+            >
               <Key className="h-4 w-4" />
             </button>
-            {account.role === 'admin' && (
-              <button
-                onClick={() => setShowAdmin((v) => !v)}
-                className={`btn-ghost ${showAdmin ? 'ring-2 ring-brand-300' : ''}`}
-                title="管理后台"
-              >
-                <Shield className="h-4 w-4" />
-              </button>
-            )}
             <button onClick={logout} className="btn-ghost" title="退出登录">
               <LogOut className="h-4 w-4" />
             </button>
@@ -209,7 +279,11 @@ export default function App() {
 
         {/* stats */}
         <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatCard icon={<Users className="h-5 w-5" />} label="托管账号" value={stats.accounts} />
+          <StatCard
+            icon={<Users className="h-5 w-5" />}
+            label="托管账号"
+            value={stats.accounts}
+          />
           <StatCard
             icon={<Activity className="h-5 w-5" />}
             label="自动任务启用"
@@ -223,7 +297,11 @@ export default function App() {
         </div>
 
         <div className="mb-8">
-          <SchedulerBar scheduler={scheduler} onChange={setScheduler} notify={notify} />
+          <SchedulerBar
+            scheduler={scheduler}
+            onChange={setScheduler}
+            notify={notify}
+          />
         </div>
 
         {/* accounts */}
@@ -264,38 +342,25 @@ export default function App() {
         )}
 
         <footer className="mt-16 border-t border-slate-200 pt-6 text-center text-xs text-slate-400">
-          Lumen · 仅供个人学习与自动化使用 · 数据按账号隔离，登录态加密存储于服务器
+          Lumen · 仅供个人学习与自动化使用 ·
+          数据按账号隔离，登录态加密存储于服务器
         </footer>
       </div>
 
-      {showAdmin && account.role === 'admin' && (
-        <div className="fixed inset-0 z-40 overflow-auto bg-mesh">
-          <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-extrabold text-slate-900">
-                <Shield className="mr-2 inline h-6 w-6 text-brand-600" />
-                管理后台
-              </h2>
-              <button onClick={() => setShowAdmin(false)} className="btn-ghost">
-                <Settings className="h-4 w-4" /> 返回控制台
-              </button>
-            </div>
-            <AdminPage currentAccountId={account.id} notify={notify} />
-          </div>
-        </div>
-      )}
-
       {showChangePw && (
-        <ChangePasswordModal onClose={() => setShowChangePw(false)} notify={notify} />
+        <ChangePasswordModal
+          onClose={() => setShowChangePw(false)}
+          notify={notify}
+        />
       )}
 
       {showLogin && (
         <QRLogin
           onClose={() => setShowLogin(false)}
           onSuccess={(user) => {
-            upsertUser(user)
-            setShowLogin(false)
-            notify(`账号「${user.nickname || user.uid}」已添加`, true)
+            upsertUser(user);
+            setShowLogin(false);
+            notify(`账号「${user.nickname || user.uid}」已添加`, true);
           }}
         />
       )}
@@ -312,7 +377,7 @@ export default function App() {
 
       <ToastStack toasts={toasts} dismiss={dismiss} />
     </div>
-  )
+  );
 }
 
 function StatCard({
@@ -320,9 +385,9 @@ function StatCard({
   label,
   value,
 }: {
-  icon: React.ReactNode
-  label: string
-  value: number | string
+  icon: React.ReactNode;
+  label: string;
+  value: number | string;
 }) {
   return (
     <div className="glass card-hover flex items-center gap-4 p-5">
@@ -334,7 +399,7 @@ function StatCard({
         <p className="text-xs text-slate-500">{label}</p>
       </div>
     </div>
-  )
+  );
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {
@@ -353,5 +418,5 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
         <Plus className="h-4 w-4" /> 扫码添加账号
       </button>
     </div>
-  )
+  );
 }

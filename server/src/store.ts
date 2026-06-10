@@ -316,8 +316,6 @@ export function createAccount({
   const data = load()
   const id = randomId()
   const clean = String(username).trim()
-  // First ever account gets the admin role.
-  const isFirstAccount = Object.keys(data.accounts).length === 0
   const account: PlatformAccount = {
     id,
     username: clean,
@@ -327,13 +325,41 @@ export function createAccount({
     createdAt: Date.now(),
     lastLoginAt: Date.now(),
     scheduler: { enabled: false },
-    role: isFirstAccount ? 'admin' : 'user',
+    role: 'user',
     disabled: false,
     sessionVersion: 0,
   }
   data.accounts[id] = account
   save()
   return publicAccount(account)
+}
+
+export const DEFAULT_ADMIN_USERNAME = 'adminYYY'
+export const DEFAULT_ADMIN_PASSWORD = '123456'
+
+/**
+ * Make sure an admin account exists. On a fresh deployment this creates the
+ * built-in admin (change its password right after first login!).
+ */
+export function ensureDefaultAdmin(): void {
+  const data = load()
+  if (Object.values(data.accounts).some((a) => a.role === 'admin')) return
+  const pub = createAccount({
+    username: DEFAULT_ADMIN_USERNAME,
+    password: DEFAULT_ADMIN_PASSWORD,
+  })
+  const acc = getAccountById(pub.id)!
+  acc.role = 'admin'
+  save()
+}
+
+export function getAccountByEmail(email: string): PlatformAccount | null {
+  const clean = String(email).trim().toLowerCase()
+  if (!clean) return null
+  return (
+    Object.values(load().accounts).find((a) => (a.email || '').toLowerCase() === clean) ??
+    null
+  )
 }
 
 export function touchLogin(id: string): void {
