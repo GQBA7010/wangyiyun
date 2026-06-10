@@ -3,7 +3,6 @@ import {
   Activity,
   Key,
   LogOut,
-  Play,
   Plus,
   Shield,
   Sparkles,
@@ -245,22 +244,7 @@ export default function App() {
               </span>
               {account.username}
             </span>
-            {users.length > 0 && (
-              <button
-                onClick={async () => {
-                  try {
-                    const { message } = await api.runAll();
-                    notify(message, true);
-                    setTimeout(load, 2000);
-                  } catch (e) {
-                    handleError(e);
-                  }
-                }}
-                className="btn-ghost"
-              >
-                <Play className="h-4 w-4" /> 立即执行
-              </button>
-            )}
+
             <button onClick={() => setShowLogin(true)} className="btn-primary">
               <Plus className="h-4 w-4" /> 添加账号
             </button>

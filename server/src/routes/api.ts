@@ -14,7 +14,7 @@ import {
   upsertUser,
 } from '../store.js'
 import { config } from '../config.js'
-import { runAll } from '../scheduler.js'
+
 import { requireAccount, requireAuth, requireOwnedUser } from '../security/auth.js'
 import {
   checkUserSession,
@@ -258,13 +258,6 @@ router.post('/scheduler', (req: Request, res: Response) => {
     enabled: parsed.success ? !!parsed.data.enabled : false,
   })
   res.json({ ok: true, scheduler })
-})
-
-// --- Run all of the caller's enabled tasks now ----------------------------
-
-router.post('/run-all', (req: Request, res: Response) => {
-  void runAll(requireAccount(req).id)
-  res.json({ ok: true, message: '已触发全部任务' })
 })
 
 export default router

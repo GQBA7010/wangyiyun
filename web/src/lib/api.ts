@@ -198,7 +198,6 @@ export const api = {
       evaluated?: number;
       user: User;
     }>(`/api/users/${uid}/partner`, { method: "POST" }),
-  runAll: () => http<{ message: string }>("/api/run-all", { method: "POST" }),
   getScheduler: () => http<{ scheduler: Scheduler }>("/api/scheduler"),
   setScheduler: (patch: Partial<Scheduler>) =>
     http<{ scheduler: Scheduler }>("/api/scheduler", {
