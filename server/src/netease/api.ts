@@ -1,9 +1,18 @@
 import axios from 'axios'
+import type { AxiosRequestConfig } from 'axios'
+import { HttpsProxyAgent } from 'https-proxy-agent'
 import { weapi } from './crypto.js'
+import type { DeviceFingerprint } from './fingerprint.js'
+import { config } from '../config.js'
 
 const BASE = 'https://music.163.com'
 
-const DESKTOP_UA =
+// Reuse a single agent instance when a proxy is configured
+const proxyAgent: HttpsProxyAgent<string> | undefined = config.proxyUrl
+  ? new HttpsProxyAgent(config.proxyUrl)
+  : undefined
+
+const DEFAULT_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 
@@ -25,7 +34,12 @@ export interface AccountInfo extends NeteaseBase {
 export interface UserDetail extends NeteaseBase {
   level?: number
   listenSongs?: number
-  profile?: { nickname?: string; avatarUrl?: string }
+  profile?: {
+    nickname?: string
+    avatarUrl?: string
+    province?: number
+    city?: number
+  }
 }
 
 export interface SigninResponse extends NeteaseBase {
@@ -85,10 +99,18 @@ interface WeapiResult<T> {
   mergedCookie: string
 }
 
-function randomIP(): string {
-  // A randomized China-region IPv4 used as X-Real-IP, mirroring the behaviour
-  // of common NetEase api wrappers to reduce risk of region/anti-abuse blocks.
+function fallbackIP(): string {
   return `116.25.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`
+}
+
+/** Common axios config: proxy agent + timeout. */
+function baseAxiosOpts(): Partial<AxiosRequestConfig> {
+  const opts: Partial<AxiosRequestConfig> = { timeout: 15000, validateStatus: () => true }
+  if (proxyAgent) {
+    opts.httpAgent = proxyAgent
+    opts.httpsAgent = proxyAgent
+  }
+  return opts
 }
 
 function readCsrf(cookie = ''): string {
@@ -120,24 +142,25 @@ export async function weapiRequest<T = unknown>(
   path: string,
   payload: Record<string, unknown> = {},
   cookie = '',
+  fp?: DeviceFingerprint,
 ): Promise<WeapiResult<T>> {
   const data = { ...payload, csrf_token: readCsrf(cookie) }
   const body = new URLSearchParams(
     weapi(data) as unknown as Record<string, string>,
   ).toString()
-  const ip = randomIP()
+  const ip = fp?.ip ?? fallbackIP()
+  const ua = fp?.ua ?? DEFAULT_UA
   const res = await axios.post<T>(`${BASE}/weapi${path}`, body, {
+    ...baseAxiosOpts(),
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': DESKTOP_UA,
+      'User-Agent': ua,
       Referer: BASE,
       Origin: BASE,
       Cookie: cookie || 'os=pc; appver=2.9.7',
       'X-Real-IP': ip,
       'X-Forwarded-For': ip,
     },
-    timeout: 15000,
-    validateStatus: () => true,
   })
   const setCookie = res.headers['set-cookie'] ?? []
   return {
@@ -187,8 +210,11 @@ export async function qrCheck(key: string): Promise<QrCheckResult> {
 }
 
 /** Fetch the logged-in account summary. */
-export async function accountInfo(cookie: string): Promise<AccountInfo> {
-  const { data } = await weapiRequest<AccountInfo>('/w/nuser/account/get', {}, cookie)
+export async function accountInfo(
+  cookie: string,
+  fp?: DeviceFingerprint,
+): Promise<AccountInfo> {
+  const { data } = await weapiRequest<AccountInfo>('/w/nuser/account/get', {}, cookie, fp)
   return data
 }
 
@@ -196,10 +222,13 @@ export async function accountInfo(cookie: string): Promise<AccountInfo> {
  * Lightweight session-validity check. Returns true if the cookie still carries
  * a valid login; false if the session has expired (code 301 or missing account).
  */
-export async function checkSession(cookie: string | undefined): Promise<boolean> {
+export async function checkSession(
+  cookie: string | undefined,
+  fp?: DeviceFingerprint,
+): Promise<boolean> {
   if (!cookie) return false
   try {
-    const info = await accountInfo(cookie)
+    const info = await accountInfo(cookie, fp)
     return !!(info.account?.id ?? info.profile?.userId)
   } catch {
     return false
@@ -210,8 +239,14 @@ export async function checkSession(cookie: string | undefined): Promise<boolean>
 export async function userDetail(
   uid: number,
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<UserDetail> {
-  const { data } = await weapiRequest<UserDetail>(`/v1/user/detail/${uid}`, {}, cookie)
+  const { data } = await weapiRequest<UserDetail>(
+    `/v1/user/detail/${uid}`,
+    {},
+    cookie,
+    fp,
+  )
   return data
 }
 
@@ -222,11 +257,13 @@ export async function userDetail(
 export async function dailySignin(
   type: number,
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<SigninResponse> {
   const { data } = await weapiRequest<SigninResponse>(
     '/point/dailyTask',
     { type },
     cookie,
+    fp,
   )
   return data
 }
@@ -235,11 +272,13 @@ export async function dailySignin(
 export async function playlistDetail(
   id: number,
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<number[]> {
   const { data } = await weapiRequest<{ playlist?: { trackIds?: { id: number }[] } }>(
     '/v6/playlist/detail',
     { id, n: 1000, s: 0 },
     cookie,
+    fp,
   )
   return (data.playlist?.trackIds ?? []).map((t) => t.id)
 }
@@ -248,31 +287,32 @@ export async function playlistDetail(
  * Report a "play" event for a song, incrementing the account's listen count
  * (听歌量). `time` is the played duration in seconds.
  */
+// Realistic variation in scrobble fields
+const SCROBBLE_SOURCES = ['list', 'album', 'search', 'fmtrash', 'recommend', 'toplist']
+const SCROBBLE_ENDS = ['playend', 'ui', 'interrupt', 'playend', 'playend', 'playend']
+
 export async function scrobble(
   id: number,
   time: number,
   cookie: string | undefined,
   sourceId = '',
+  fp?: DeviceFingerprint,
 ): Promise<{ code?: number; data?: unknown }> {
+  const source = SCROBBLE_SOURCES[Math.floor(Math.random() * SCROBBLE_SOURCES.length)]!
+  const end = SCROBBLE_ENDS[Math.floor(Math.random() * SCROBBLE_ENDS.length)]!
+  const wifi = Math.random() > 0.3 ? 1 : 0
+  const download = Math.random() > 0.85 ? 1 : 0
   const logs = JSON.stringify([
     {
       action: 'play',
-      json: {
-        download: 0,
-        end: 'playend',
-        id,
-        sourceId,
-        time,
-        type: 'song',
-        wifi: 0,
-        source: 'list',
-      },
+      json: { download, end, id, sourceId, time, type: 'song', wifi, source },
     },
   ])
   const { data } = await weapiRequest<{ code?: number; data?: unknown }>(
     '/feedback/weblog',
     { logs },
     cookie,
+    fp,
   )
   return data
 }
@@ -284,11 +324,13 @@ export async function scrobble(
 /** Fetch all yunbei tasks (completed and incomplete). */
 export async function yunbeiTasksTodo(
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<YunbeiTodoResponse> {
   const { data } = await weapiRequest<YunbeiTodoResponse>(
     '/usertool/task/todo/query',
     {},
     cookie,
+    fp,
   )
   return data
 }
@@ -301,11 +343,13 @@ export async function yunbeiTaskFinish(
   userTaskId: number,
   depositCode: number,
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<NeteaseBase> {
   const { data } = await weapiRequest<NeteaseBase>(
     '/usertool/task/point/receive',
     { userTaskId, depositCode: depositCode || 0 },
     cookie,
+    fp,
   )
   return data
 }
@@ -314,11 +358,13 @@ export async function yunbeiTaskFinish(
 export async function likeSong(
   trackId: number,
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<NeteaseBase> {
   const { data } = await weapiRequest<NeteaseBase>(
     '/radio/like',
     { alg: 'itembased', trackId, like: true, time: 25 },
     cookie,
+    fp,
   )
   return data
 }
@@ -339,19 +385,23 @@ const MP_REFERER = 'https://mp.music.163.com/'
 const MP_ORIGIN = 'https://mp.music.163.com'
 
 /** Authenticated GET against the music-partner interface host. */
-async function mpGet<T>(path: string, cookie: string | undefined): Promise<T> {
-  const ip = randomIP()
+async function mpGet<T>(
+  path: string,
+  cookie: string | undefined,
+  fp?: DeviceFingerprint,
+): Promise<T> {
+  const ip = fp?.ip ?? fallbackIP()
+  const ua = fp?.ua ?? DEFAULT_UA
   const res = await axios.get<T>(`${MP_BASE}${path}`, {
+    ...baseAxiosOpts(),
     headers: {
-      'User-Agent': DESKTOP_UA,
+      'User-Agent': ua,
       Referer: MP_REFERER,
       Origin: MP_ORIGIN,
       Cookie: cookie || 'os=pc; appver=2.9.7',
       'X-Real-IP': ip,
       'X-Forwarded-For': ip,
     },
-    timeout: 15000,
-    validateStatus: () => true,
   })
   return res.data
 }
@@ -361,24 +411,25 @@ async function mpWeapiPost<T>(
   path: string,
   payload: Record<string, unknown>,
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<T> {
   const csrf = readCsrf(cookie)
   const body = new URLSearchParams(
     weapi({ ...payload, csrf_token: csrf }) as unknown as Record<string, string>,
   ).toString()
-  const ip = randomIP()
+  const ip = fp?.ip ?? fallbackIP()
+  const ua = fp?.ua ?? DEFAULT_UA
   const res = await axios.post<T>(`${MP_BASE}/weapi${path}?csrf_token=${csrf}`, body, {
+    ...baseAxiosOpts(),
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': DESKTOP_UA,
+      'User-Agent': ua,
       Referer: MP_REFERER,
       Origin: MP_ORIGIN,
       Cookie: cookie || 'os=pc; appver=2.9.7',
       'X-Real-IP': ip,
       'X-Forwarded-For': ip,
     },
-    timeout: 15000,
-    validateStatus: () => true,
   })
   return res.data
 }
@@ -386,17 +437,20 @@ async function mpWeapiPost<T>(
 /** Fetch the daily music-partner evaluation tasks (the base works of the day). */
 export async function partnerDailyTasks(
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<PartnerDailyResponse> {
-  return mpGet<PartnerDailyResponse>('/api/music/partner/daily/task/get', cookie)
+  return mpGet<PartnerDailyResponse>('/api/music/partner/daily/task/get', cookie, fp)
 }
 
 /** Fetch the extra "waiting to evaluate" work list (bonus works). */
 export async function partnerExtraTasks(
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<PartnerExtraResponse> {
   return mpGet<PartnerExtraResponse>(
     '/api/music/partner/extra/wait/evaluate/work/list',
     cookie,
+    fp,
   )
 }
 
@@ -404,11 +458,13 @@ export async function partnerExtraTasks(
 export async function partnerReportListen(
   { workId, resourceId }: { workId: number; resourceId?: string },
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<NeteaseBase> {
   return mpWeapiPost<NeteaseBase>(
     '/partner/resource/interact/report',
     { workId, resourceId, bizResourceId: '', interactType: 'PLAY_END' },
     cookie,
+    fp,
   )
 }
 
@@ -425,6 +481,7 @@ export async function partnerEvaluate(
     extra = false,
   }: { taskId?: number; workId: number; score: number; extra?: boolean },
   cookie: string | undefined,
+  fp?: DeviceFingerprint,
 ): Promise<NeteaseBase> {
   const s = String(score)
   const payload: Record<string, unknown> = {
@@ -437,5 +494,5 @@ export async function partnerEvaluate(
     syncYunCircle: 'true',
   }
   if (extra) payload.extraResource = 'true'
-  return mpWeapiPost<NeteaseBase>('/music/partner/work/evaluate', payload, cookie)
+  return mpWeapiPost<NeteaseBase>('/music/partner/work/evaluate', payload, cookie, fp)
 }

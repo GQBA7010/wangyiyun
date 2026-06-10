@@ -61,6 +61,10 @@ const EnvSchema = z.object({
   SMTP_USER: z.string().optional().default(''),
   SMTP_PASS: z.string().optional().default(''),
   SMTP_FROM_NAME: z.string().optional().default('Lumen 控制台'),
+
+  // Optional HTTP/SOCKS5 proxy for outgoing NetEase API requests.
+  // e.g. http://host:port, socks5://host:port, http://user:pass@host:port
+  PROXY_URL: z.string().optional().default(''),
 })
 
 const parsed = EnvSchema.parse(process.env)
@@ -106,4 +110,7 @@ export const config = {
   smtpFromName: parsed.SMTP_FROM_NAME,
   /** Whether email features (verification, notifications) are enabled. */
   smtpEnabled: !!(parsed.SMTP_USER && parsed.SMTP_PASS),
+
+  // Optional proxy URL for all outgoing NetEase API requests.
+  proxyUrl: parsed.PROXY_URL,
 } as const

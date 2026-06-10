@@ -64,6 +64,10 @@ export interface NeteaseUser {
   avatarUrl?: string
   level?: number
   listenSongs?: number
+  /** NetEase province code (e.g. 440000 = Guangdong), from user profile. */
+  province?: number
+  /** NetEase city code (e.g. 440100 = Guangzhou), from user profile. */
+  city?: number
   status?: AccountStatus
   settings: Settings
   logs: LogEntry[]

@@ -23,8 +23,11 @@ export function schedulerStatus(): {
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-const CYCLE_GAP_MS = 5000 // short breather between full listen cycles
-const IDLE_GAP_MS = 15000 // longer wait when nobody has auto-listen enabled
+
+// Cycle gap: 20-40 min between full listen passes (realistic human session gaps)
+const CYCLE_GAP_MIN_MS = 20 * 60 * 1000
+const CYCLE_GAP_MAX_MS = 40 * 60 * 1000
+const IDLE_GAP_MS = 60_000 // check for newly enabled users once a minute
 
 function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
@@ -102,8 +105,15 @@ async function continuousLoop(): Promise<void> {
       await sleep(IDLE_GAP_MS)
       continue
     }
+    // Shuffle user order so the execution sequence varies each cycle
+    for (let i = users.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[users[i], users[j]] = [users[j]!, users[i]!]
+    }
     for (const user of users) {
       if (!ownerEnabled(user)) continue
+      // Random jitter per user: 0-5 min before starting their tasks
+      await sleep(Math.floor(Math.random() * 5 * 60 * 1000))
       busy = true
       try {
         const fresh = getUser(user.uid)
@@ -113,9 +123,6 @@ async function continuousLoop(): Promise<void> {
         if (user.settings.autoTasks && !isToday(fresh?.lastYunbei?.at)) {
           await withRetry('yunbei', user.uid, () => runYunbeiTasks(user.uid))
         }
-        // Music-partner evaluation runs every cycle ("刷新了就评价"), but skip
-        // accounts we already know lack qualification (checked today) so the
-        // logs don't fill up with repeated "无测评资格" entries.
         if (user.settings.autoPartner) {
           const ineligibleToday =
             fresh?.lastPartner?.eligible === false && isToday(fresh?.lastPartner?.at)
@@ -133,7 +140,10 @@ async function continuousLoop(): Promise<void> {
       }
     }
     lastCycleAt = Date.now()
-    await sleep(CYCLE_GAP_MS)
+    // Random gap between cycles (20-40 minutes)
+    const gap =
+      CYCLE_GAP_MIN_MS + Math.floor(Math.random() * (CYCLE_GAP_MAX_MS - CYCLE_GAP_MIN_MS))
+    await sleep(gap)
   }
 }
 

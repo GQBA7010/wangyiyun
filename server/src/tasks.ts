@@ -14,6 +14,7 @@ import {
   yunbeiTasksTodo,
 } from './netease/api.js'
 import type { PartnerWork } from './netease/api.js'
+import { getFingerprint, type DeviceFingerprint } from './netease/fingerprint.js'
 import {
   addLog,
   getAccountById,
@@ -75,21 +76,26 @@ function markExpired(uid: number): void {
   }
 }
 
+/** Resolve the device fingerprint for a hosted account. */
+function fp(user: NeteaseUser): DeviceFingerprint {
+  return getFingerprint(user.uid, user.province)
+}
+
 /** Check whether the account cookie is still valid and update status. */
 export async function checkUserSession(uid: number): Promise<{ valid: boolean }> {
   const user = getUser(uid)
   if (!user) return { valid: false }
-  const valid = await checkSession(user.cookie)
+  const valid = await checkSession(user.cookie, fp(user))
   if (valid) upsertUser({ uid, status: 'active' })
   else markExpired(uid)
   return { valid }
 }
 
-/** Refresh account profile (level / listenSongs / nickname). */
+/** Refresh account profile (level / listenSongs / nickname / province / city). */
 export async function refreshProfile(uid: number): Promise<NeteaseUser | undefined> {
   const user = getUser(uid)
   if (!user) return undefined
-  const detail = await userDetail(uid, user.cookie)
+  const detail = await userDetail(uid, user.cookie, fp(user))
   if (detail.profile) {
     return upsertUser({
       uid,
@@ -97,6 +103,8 @@ export async function refreshProfile(uid: number): Promise<NeteaseUser | undefin
       avatarUrl: detail.profile.avatarUrl ?? user.avatarUrl,
       level: detail.level ?? user.level,
       listenSongs: detail.listenSongs ?? user.listenSongs,
+      province: detail.profile.province ?? user.province,
+      city: detail.profile.city ?? user.city,
       status: 'active',
     })
   }
@@ -111,10 +119,11 @@ export async function refreshProfile(uid: number): Promise<NeteaseUser | undefin
 export async function runSignin(uid: number): Promise<TaskResult> {
   const user = getUser(uid)
   if (!user) return { ok: false, message: 'user not found' }
+  const f = fp(user)
   const results: string[] = []
   for (const type of [0, 1]) {
     try {
-      const res = await dailySignin(type, user.cookie)
+      const res = await dailySignin(type, user.cookie, f)
       const label = type === 0 ? 'PC' : '移动'
       if (res.code === 200) {
         results.push(`${label}签到成功 +${res.point ?? 0}`)
@@ -126,7 +135,8 @@ export async function runSignin(uid: number): Promise<TaskResult> {
     } catch (e) {
       results.push(`${type === 0 ? 'PC' : '移动'}签到失败: ${errMessage(e)}`)
     }
-    await sleep(800)
+    // Realistic delay between PC & mobile sign-in (5-30s)
+    await sleep(5000 + Math.floor(Math.random() * 25000))
   }
   const message = results.join('；')
   addLog(uid, 'signin', message, true)
@@ -135,7 +145,10 @@ export async function runSignin(uid: number): Promise<TaskResult> {
   return { ok: true, message }
 }
 
-async function getSongPoolIds(cookie: string | undefined): Promise<number[]> {
+async function getSongPoolIds(
+  cookie: string | undefined,
+  f?: DeviceFingerprint,
+): Promise<number[]> {
   const pool = getSongPool()
   if (pool.ids.length && Date.now() - pool.fetchedAt < POOL_TTL) {
     return pool.ids
@@ -143,12 +156,12 @@ async function getSongPoolIds(cookie: string | undefined): Promise<number[]> {
   const all = new Set<number>()
   for (const pid of CHART_PLAYLISTS) {
     try {
-      const ids = await playlistDetail(pid, cookie)
+      const ids = await playlistDetail(pid, cookie, f)
       ids.forEach((id) => all.add(id))
     } catch {
       /* ignore individual chart failures */
     }
-    await sleep(500)
+    await sleep(1000 + Math.floor(Math.random() * 2000))
   }
   const ids = [...all]
   if (ids.length) setSongPool(ids)
@@ -162,9 +175,12 @@ async function getSongPoolIds(cookie: string | undefined): Promise<number[]> {
 export async function runScrobble(uid: number): Promise<TaskResult> {
   const user = getUser(uid)
   if (!user) return { ok: false, message: 'user not found' }
-  const count = Math.max(1, Math.min(500, user.settings.scrobbleCount || 300))
+  // Smaller batches per cycle to look more natural (15-40 songs)
+  const maxCount = Math.max(1, Math.min(500, user.settings.scrobbleCount || 300))
+  const count = Math.min(maxCount, 15 + Math.floor(Math.random() * 26))
+  const f = fp(user)
 
-  const pool = await getSongPoolIds(user.cookie)
+  const pool = await getSongPoolIds(user.cookie, f)
   if (!pool.length) {
     const message = '听歌打卡失败：歌曲池为空'
     addLog(uid, 'scrobble', message, false)
@@ -174,23 +190,32 @@ export async function runScrobble(uid: number): Promise<TaskResult> {
   let played = new Set<number>(user.playedIds || [])
   let candidates = pool.filter((id) => !played.has(id))
   if (candidates.length < count) {
-    // exhausted unique songs — reset dedup set and start a fresh cycle
     played = new Set()
     candidates = [...pool]
+  }
+
+  // Shuffle candidates so the listening order varies
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[candidates[i], candidates[j]] = [candidates[j]!, candidates[i]!]
   }
 
   const batch = candidates.slice(0, count)
   let ok = 0
   for (const id of batch) {
     try {
-      const time = 180 + Math.floor(Math.random() * 60)
-      const res = await scrobble(id, time, user.cookie)
+      // Realistic play duration: 120-300s with ±15% variation
+      const base = 120 + Math.floor(Math.random() * 180)
+      const jitter = Math.floor(base * (Math.random() * 0.3 - 0.15))
+      const time = base + jitter
+      const res = await scrobble(id, time, user.cookie, '', f)
       if (res.code === 200 || res.data) ok += 1
       played.add(id)
     } catch {
       /* skip individual song failures */
     }
-    await sleep(300 + Math.floor(Math.random() * 300))
+    // Realistic gap between songs: 30-120s (simulates actual listening)
+    await sleep(30000 + Math.floor(Math.random() * 90000))
   }
 
   const fresh = getUser(uid)
@@ -218,8 +243,9 @@ export async function runScrobble(uid: number): Promise<TaskResult> {
 export async function runYunbeiTasks(uid: number): Promise<YunbeiResult> {
   const user = getUser(uid)
   if (!user) return { ok: false, message: 'user not found' }
+  const f = fp(user)
 
-  const todoRes = await yunbeiTasksTodo(user.cookie)
+  const todoRes = await yunbeiTasksTodo(user.cookie, f)
   const tasks = todoRes.data ?? []
   if (!tasks.length) {
     const message = '云贝任务：暂无待办任务'
@@ -231,7 +257,7 @@ export async function runYunbeiTasks(uid: number): Promise<YunbeiResult> {
   const details: string[] = []
 
   for (const task of tasks) {
-    await sleep(500 + Math.floor(Math.random() * 500))
+    await sleep(2000 + Math.floor(Math.random() * 5000))
 
     // Task already completed and claimable
     if (task.userTaskId && task.userTaskId > 0) {
@@ -240,6 +266,7 @@ export async function runYunbeiTasks(uid: number): Promise<YunbeiResult> {
           task.userTaskId,
           task.depositCode ?? 0,
           user.cookie,
+          f,
         )
         if (res.code === 200) {
           claimed += 1
@@ -256,10 +283,10 @@ export async function runYunbeiTasks(uid: number): Promise<YunbeiResult> {
     // Try to auto-complete "收藏歌曲" by liking a random song
     if (task.taskName?.includes('收藏') || task.taskName?.includes('喜欢')) {
       try {
-        const pool = await getSongPoolIds(user.cookie)
+        const pool = await getSongPoolIds(user.cookie, f)
         if (pool.length) {
           const songId = pool[Math.floor(Math.random() * pool.length)] as number
-          const res = await likeSong(songId, user.cookie)
+          const res = await likeSong(songId, user.cookie, f)
           if (res.code === 200) {
             details.push(`${task.taskName} → 已收藏歌曲${songId}`)
           } else {
@@ -277,15 +304,16 @@ export async function runYunbeiTasks(uid: number): Promise<YunbeiResult> {
 
   // Re-check for newly claimable tasks after auto-actions
   if (details.some((d) => d.includes('已收藏'))) {
-    await sleep(2000)
+    await sleep(3000 + Math.floor(Math.random() * 3000))
     try {
-      const recheck = await yunbeiTasksTodo(user.cookie)
+      const recheck = await yunbeiTasksTodo(user.cookie, f)
       for (const t of recheck.data ?? []) {
         if (t.userTaskId && t.userTaskId > 0) {
           const res = await yunbeiTaskFinish(
             t.userTaskId,
             t.depositCode ?? 0,
             user.cookie,
+            f,
           )
           if (res.code === 200) {
             claimed += 1
@@ -333,10 +361,11 @@ export async function runPartnerEvaluate(uid: number): Promise<PartnerResult> {
   const user = getUser(uid)
   if (!user) return { ok: false, message: 'user not found' }
   const strategy = Math.max(1, Math.min(4, Number(user.settings.partnerScore) || 3))
+  const f = fp(user)
 
   let daily
   try {
-    daily = await partnerDailyTasks(user.cookie)
+    daily = await partnerDailyTasks(user.cookie, f)
   } catch (e) {
     const message = `音乐合伙人：获取任务失败 ${errMessage(e)}`
     addLog(uid, 'partner', message, false)
@@ -371,7 +400,11 @@ export async function runPartnerEvaluate(uid: number): Promise<PartnerResult> {
     if (t.completed || !t.work?.id) continue
     try {
       const score = pickPartnerScore(t.work, strategy)
-      const res = await partnerEvaluate({ taskId, workId: t.work.id, score }, user.cookie)
+      const res = await partnerEvaluate(
+        { taskId, workId: t.work.id, score },
+        user.cookie,
+        f,
+      )
       if (res.code === 200) {
         evaluated += 1
         baseDone += 1
@@ -385,7 +418,7 @@ export async function runPartnerEvaluate(uid: number): Promise<PartnerResult> {
   // Bonus (extra) works: report a listen first, then evaluate, up to the cap.
   let extraDone = 0
   try {
-    const extraRes = await partnerExtraTasks(user.cookie)
+    const extraRes = await partnerExtraTasks(user.cookie, f)
     if (extraRes.code === 200 && Array.isArray(extraRes.data)) {
       const pending = extraRes.data.filter((t) => !t.completed && t.work?.id)
       for (const t of pending) {
@@ -396,12 +429,14 @@ export async function runPartnerEvaluate(uid: number): Promise<PartnerResult> {
           await partnerReportListen(
             { workId: work.id, resourceId: work.resourceId },
             user.cookie,
+            f,
           )
-          await sleep(800)
+          await sleep(2000 + Math.floor(Math.random() * 3000))
           const score = pickPartnerScore(work, strategy)
           const res = await partnerEvaluate(
             { taskId, workId: work.id, score, extra: true },
             user.cookie,
+            f,
           )
           if (res.code === 200) {
             evaluated += 1
@@ -410,7 +445,7 @@ export async function runPartnerEvaluate(uid: number): Promise<PartnerResult> {
         } catch {
           /* skip individual bonus failures */
         }
-        await sleep(1500 + Math.floor(Math.random() * 1500))
+        await sleep(3000 + Math.floor(Math.random() * 5000))
       }
     }
   } catch {
@@ -441,6 +476,7 @@ export async function runUserTasks(uid: number): Promise<void> {
 }
 
 export async function refreshAccountUid(cookie: string): Promise<number | undefined> {
+  // No fingerprint yet — this runs during QR login before the uid is known
   const info = await accountInfo(cookie)
   return info.account?.id ?? info.profile?.userId
 }
