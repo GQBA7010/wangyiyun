@@ -54,6 +54,13 @@ const EnvSchema = z.object({
   MAX_NETEASE_PER_USER: intFromEnv(5),
   BACKUP_INTERVAL_HOURS: intFromEnv(6),
   BACKUP_KEEP: intFromEnv(20),
+
+  // SMTP (QQ mail)
+  SMTP_HOST: z.string().optional().default('smtp.qq.com'),
+  SMTP_PORT: intFromEnv(465),
+  SMTP_USER: z.string().optional().default(''),
+  SMTP_PASS: z.string().optional().default(''),
+  SMTP_FROM_NAME: z.string().optional().default('Lumen 控制台'),
 })
 
 const parsed = EnvSchema.parse(process.env)
@@ -90,4 +97,13 @@ export const config = {
   // Periodic SQLite backups (0 hours disables the loop).
   backupIntervalMs: parsed.BACKUP_INTERVAL_HOURS * 60 * 60 * 1000,
   backupKeep: parsed.BACKUP_KEEP,
+
+  // SMTP mail
+  smtpHost: parsed.SMTP_HOST,
+  smtpPort: parsed.SMTP_PORT,
+  smtpUser: parsed.SMTP_USER,
+  smtpPass: parsed.SMTP_PASS,
+  smtpFromName: parsed.SMTP_FROM_NAME,
+  /** Whether email features (verification, notifications) are enabled. */
+  smtpEnabled: !!(parsed.SMTP_USER && parsed.SMTP_PASS),
 } as const

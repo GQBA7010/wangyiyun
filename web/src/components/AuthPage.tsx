@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Loader2, Lock, LogIn, Music4, RefreshCw, UserPlus } from 'lucide-react'
+import { Loader2, Lock, LogIn, Mail, Music4, RefreshCw, UserPlus } from 'lucide-react'
 import { api, type Account } from '../lib/api'
 
 interface AuthPageProps {
   allowRegistration: boolean
+  emailVerification: boolean
   onAuthed: (account: Account) => void
 }
 
 type Mode = 'login' | 'register'
 
-export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
+export function AuthPage({ allowRegistration, emailVerification, onAuthed }: AuthPageProps) {
   const [mode, setMode] = useState<Mode>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -19,6 +20,17 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
   const [captchaLoading, setCaptchaLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [email, setEmail] = useState('')
+  const [emailCode, setEmailCode] = useState('')
+  const [emailCodeId, setEmailCodeId] = useState('')
+  const [sendingCode, setSendingCode] = useState(false)
+  const [cooldown, setCooldown] = useState(0)
+
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [cooldown])
 
   const loadCaptcha = useCallback(async () => {
     setCaptchaLoading(true)
@@ -46,7 +58,15 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
       const { account } =
         mode === 'login'
           ? await api.login(username.trim(), password, captchaId, captcha)
-          : await api.register(username.trim(), password, captchaId, captcha)
+          : await api.register(
+              username.trim(),
+              password,
+              captchaId,
+              captcha,
+              email.trim(),
+              emailCodeId,
+              emailCode.trim(),
+            )
       onAuthed(account)
     } catch (err) {
       setError((err as Error).message)
@@ -60,6 +80,30 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
   const switchMode = (next: Mode) => {
     setMode(next)
     setError('')
+  }
+
+  const sendEmailCode = async () => {
+    setError('')
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError('请先填写正确的邮箱')
+      return
+    }
+    if (!captcha) {
+      setError('请先输入图形验证码再获取邮件验证码')
+      return
+    }
+    setSendingCode(true)
+    try {
+      const { codeId } = await api.sendEmailCode(email.trim(), captchaId, captcha)
+      setEmailCodeId(codeId)
+      setCooldown(60)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSendingCode(false)
+      // The image captcha is single-use server-side; issue a fresh one.
+      loadCaptcha()
+    }
   }
 
   return (
@@ -121,6 +165,51 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
                 required
               />
             </Field>
+            {mode === 'register' && emailVerification && (
+              <>
+                <Field label="QQ 邮箱">
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                    placeholder="用于接收验证码与通知"
+                    className="auth-input"
+                    required
+                  />
+                </Field>
+                <Field label="邮件验证码">
+                  <div className="flex items-stretch gap-3">
+                    <input
+                      value={emailCode}
+                      onChange={(e) => setEmailCode(e.target.value)}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      placeholder="6 位数字"
+                      className="auth-input flex-1 tracking-[0.3em]"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={sendEmailCode}
+                      disabled={sendingCode || cooldown > 0}
+                      className="flex h-[46px] w-[130px] shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 text-sm font-medium text-slate-600 transition-colors hover:border-brand-300 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {sendingCode ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Mail className="h-4 w-4" />
+                      )}
+                      {cooldown > 0 ? `${cooldown}s` : '获取验证码'}
+                    </button>
+                  </div>
+                  <span className="mt-1 block text-[11px] text-slate-400">
+                    需先输入下方图形验证码，再点击获取邮件验证码
+                  </span>
+                </Field>
+              </>
+            )}
             <Field label="验证码">
               <div className="flex items-stretch gap-3">
                 <input

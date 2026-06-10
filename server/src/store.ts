@@ -61,6 +61,7 @@ interface AccountRow {
   username: string
   username_lower: string
   password_hash: string
+  email: string
   created_at: number
   last_login_at: number
   scheduler_json: string
@@ -138,6 +139,7 @@ export function load(): AppData {
       for (const acc of Object.values(data.accounts)) {
         if (!acc.role) acc.role = firstAccount ? 'admin' : 'user'
         if (acc.disabled === undefined) acc.disabled = false
+        if (acc.email === undefined) acc.email = ''
         firstAccount = false
       }
       cache = data
@@ -166,6 +168,7 @@ export function load(): AppData {
       username: row.username,
       usernameLower: row.username_lower,
       passwordHash: row.password_hash,
+      email: row.email || '',
       createdAt: row.created_at,
       lastLoginAt: row.last_login_at,
       scheduler: JSON.parse(row.scheduler_json) as SchedulerState,
@@ -199,12 +202,13 @@ function persist(): void {
 
   const upsertAccount = db.prepare(
     `INSERT INTO accounts
-       (id, username, username_lower, password_hash, created_at, last_login_at, scheduler_json, role, disabled)
-     VALUES (@id, @username, @usernameLower, @passwordHash, @createdAt, @lastLoginAt, @scheduler, @role, @disabled)
+       (id, username, username_lower, password_hash, email, created_at, last_login_at, scheduler_json, role, disabled)
+     VALUES (@id, @username, @usernameLower, @passwordHash, @email, @createdAt, @lastLoginAt, @scheduler, @role, @disabled)
      ON CONFLICT(id) DO UPDATE SET
        username = excluded.username,
        username_lower = excluded.username_lower,
        password_hash = excluded.password_hash,
+       email = excluded.email,
        created_at = excluded.created_at,
        last_login_at = excluded.last_login_at,
        scheduler_json = excluded.scheduler_json,
@@ -235,6 +239,7 @@ function persist(): void {
         username: acc.username,
         usernameLower: acc.usernameLower,
         passwordHash: acc.passwordHash,
+        email: acc.email || '',
         createdAt: acc.createdAt,
         lastLoginAt: acc.lastLoginAt,
         scheduler: JSON.stringify(acc.scheduler),
@@ -297,9 +302,11 @@ export function countAccounts(): number {
 export function createAccount({
   username,
   password,
+  email,
 }: {
   username: string
   password: string
+  email?: string
 }): PublicAccount {
   const data = load()
   const id = randomId()
@@ -311,6 +318,7 @@ export function createAccount({
     username: clean,
     usernameLower: clean.toLowerCase(),
     passwordHash: hashPassword(password),
+    email: email || '',
     createdAt: Date.now(),
     lastLoginAt: Date.now(),
     scheduler: { enabled: false },

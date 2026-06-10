@@ -91,6 +91,8 @@ export interface PlatformAccount {
   username: string
   usernameLower: string
   passwordHash: string
+  /** Verified email (QQ mail); used for registration verification and notifications. */
+  email: string
   createdAt: number
   lastLoginAt: number
   scheduler: SchedulerState

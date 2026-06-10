@@ -93,12 +93,37 @@ async function http<T>(url: string, init?: RequestInit): Promise<T> {
 export const api = {
   // --- auth ---
   me: () =>
-    http<{ account: Account | null; allowRegistration: boolean }>('/api/auth/me'),
+    http<{
+      account: Account | null
+      allowRegistration: boolean
+      emailVerification: boolean
+    }>('/api/auth/me'),
   captcha: () => http<{ captchaId: string; svg: string }>('/api/auth/captcha'),
-  register: (username: string, password: string, captchaId: string, captcha: string) =>
+  sendEmailCode: (email: string, captchaId: string, captcha: string) =>
+    http<{ codeId: string }>('/api/auth/email-code', {
+      method: 'POST',
+      body: JSON.stringify({ email, captchaId, captcha }),
+    }),
+  register: (
+    username: string,
+    password: string,
+    captchaId: string,
+    captcha: string,
+    email?: string,
+    emailCodeId?: string,
+    emailCode?: string,
+  ) =>
     http<{ account: Account }>('/api/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ username, password, captchaId, captcha }),
+      body: JSON.stringify({
+        username,
+        password,
+        captchaId,
+        captcha,
+        email,
+        emailCodeId,
+        emailCode,
+      }),
     }),
   login: (username: string, password: string, captchaId: string, captcha: string) =>
     http<{ account: Account }>('/api/auth/login', {

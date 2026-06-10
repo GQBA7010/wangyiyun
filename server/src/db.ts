@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS accounts (
   username       TEXT NOT NULL,
   username_lower TEXT NOT NULL UNIQUE,
   password_hash  TEXT NOT NULL,
+  email          TEXT NOT NULL DEFAULT '',
   created_at     INTEGER NOT NULL,
   last_login_at  INTEGER NOT NULL,
   scheduler_json TEXT NOT NULL DEFAULT '{"enabled":false}',
@@ -55,6 +56,9 @@ function migrate(d: Database.Database): void {
   }
   if (!cols.includes('disabled')) {
     d.exec('ALTER TABLE accounts ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!cols.includes('email')) {
+    d.exec("ALTER TABLE accounts ADD COLUMN email TEXT NOT NULL DEFAULT ''")
   }
 }
 

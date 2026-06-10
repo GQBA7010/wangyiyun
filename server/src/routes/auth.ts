@@ -19,6 +19,7 @@ import {
   setSession,
 } from '../security/auth.js'
 import { createCaptcha, verifyCaptcha } from '../security/captcha.js'
+import { sendVerificationCode, verifyCode } from '../mail.js'
 
 const router = Router()
 
@@ -38,7 +39,12 @@ const credentialsSchema = z.object({
   password: z.string().optional().default(''),
   captchaId: z.string().optional().default(''),
   captcha: z.string().optional().default(''),
+  email: z.string().optional().default(''),
+  emailCodeId: z.string().optional().default(''),
+  emailCode: z.string().optional().default(''),
 })
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 type Credentials = z.infer<typeof credentialsSchema>
 
@@ -70,7 +76,41 @@ router.get('/me', (req: Request, res: Response) => {
     ok: true,
     account: account ? publicAccount(account) : null,
     allowRegistration: config.allowRegistration,
+    emailVerification: config.smtpEnabled,
   })
+})
+
+// Throttle verification-code emails harder than other auth endpoints.
+const emailCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { ok: false, error: '发送过于频繁，请稍后再试' },
+})
+
+// Send a registration verification code to the given email.
+router.post('/email-code', emailCodeLimiter, (req: Request, res: Response): void => {
+  if (!config.smtpEnabled) {
+    res.status(400).json({ ok: false, error: '邮件服务未配置' })
+    return
+  }
+  const { email, captchaId, captcha } = parseBody(req)
+  if (!verifyCaptcha(captchaId, captcha)) {
+    res.status(400).json({ ok: false, error: '验证码错误或已过期', captcha: true })
+    return
+  }
+  const clean = email.trim().toLowerCase()
+  if (!EMAIL_RE.test(clean)) {
+    res.status(400).json({ ok: false, error: '邮箱格式不正确' })
+    return
+  }
+  sendVerificationCode(clean)
+    .then((result) => {
+      if (result.ok) res.json({ ok: true, codeId: result.codeId })
+      else res.status(400).json({ ok: false, error: result.error })
+    })
+    .catch(() => res.status(500).json({ ok: false, error: '发送失败，请稍后再试' }))
 })
 
 router.post('/register', authLimiter, (req: Request, res: Response) => {
@@ -99,7 +139,22 @@ router.post('/register', authLimiter, (req: Request, res: Response) => {
     return
   }
 
-  const account = createAccount({ username, password })
+  // Email verification (required when SMTP is configured).
+  let email = ''
+  if (config.smtpEnabled) {
+    const { email: rawEmail, emailCodeId, emailCode } = parseBody(req)
+    email = rawEmail.trim().toLowerCase()
+    if (!EMAIL_RE.test(email)) {
+      res.status(400).json({ ok: false, error: '请填写正确的邮箱' })
+      return
+    }
+    if (!verifyCode(emailCodeId, emailCode.trim(), email)) {
+      res.status(400).json({ ok: false, error: '邮箱验证码错误或已过期' })
+      return
+    }
+  }
+
+  const account = createAccount({ username, password, email })
   setSession(res, account.id)
   res.json({ ok: true, account })
 })

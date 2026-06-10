@@ -14,7 +14,16 @@ import {
   yunbeiTasksTodo,
 } from './netease/api.js'
 import type { PartnerWork } from './netease/api.js'
-import { addLog, getSongPool, getUser, save, setSongPool, upsertUser } from './store.js'
+import {
+  addLog,
+  getAccountById,
+  getSongPool,
+  getUser,
+  save,
+  setSongPool,
+  upsertUser,
+} from './store.js'
+import { notifyCookieExpired } from './mail.js'
 import type { NeteaseUser } from './types.js'
 
 export interface TaskResult {
@@ -49,12 +58,30 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
 
+/**
+ * Mark a hosted account as expired and email its owner once (only on the
+ * first transition into the expired state, to avoid notification spam).
+ */
+function markExpired(uid: number): void {
+  const user = getUser(uid)
+  if (!user) return
+  const wasExpired = user.status === 'expired'
+  upsertUser({ uid, status: 'expired' })
+  if (!wasExpired && user.ownerId) {
+    const owner = getAccountById(user.ownerId)
+    if (owner?.email) {
+      void notifyCookieExpired(owner.email, user.nickname ?? '', uid)
+    }
+  }
+}
+
 /** Check whether the account cookie is still valid and update status. */
 export async function checkUserSession(uid: number): Promise<{ valid: boolean }> {
   const user = getUser(uid)
   if (!user) return { valid: false }
   const valid = await checkSession(user.cookie)
-  upsertUser({ uid, status: valid ? 'active' : 'expired' })
+  if (valid) upsertUser({ uid, status: 'active' })
+  else markExpired(uid)
   return { valid }
 }
 
@@ -75,7 +102,7 @@ export async function refreshProfile(uid: number): Promise<NeteaseUser | undefin
   }
   // profile fetch failed — might be expired
   if (detail.code === 301 || detail.code === -462) {
-    upsertUser({ uid, status: 'expired' })
+    markExpired(uid)
   }
   return user
 }

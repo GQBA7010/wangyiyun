@@ -15,6 +15,7 @@ export default function App() {
   const [booting, setBooting] = useState(true)
   const [account, setAccount] = useState<Account | null>(null)
   const [allowRegistration, setAllowRegistration] = useState(true)
+  const [emailVerification, setEmailVerification] = useState(false)
 
   const [users, setUsers] = useState<User[]>([])
   const [scheduler, setScheduler] = useState<Scheduler>({ enabled: false })
@@ -45,9 +46,10 @@ export default function App() {
   useEffect(() => {
     api
       .me()
-      .then(({ account, allowRegistration }) => {
+      .then(({ account, allowRegistration, emailVerification }) => {
         setAccount(account)
         setAllowRegistration(allowRegistration)
+        setEmailVerification(emailVerification)
       })
       .catch(() => setAccount(null))
       .finally(() => setBooting(false))
@@ -130,6 +132,7 @@ export default function App() {
       <>
         <AuthPage
           allowRegistration={allowRegistration}
+          emailVerification={emailVerification}
           onAuthed={(acc) => {
             setAccount(acc)
             notify(`欢迎回来，${acc.username}`, true)
