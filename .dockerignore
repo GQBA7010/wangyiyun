@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+server/public
+server/data
+**/.env
+**/*.log
+.git
+.github
+README.md
+ecosystem.config.cjs

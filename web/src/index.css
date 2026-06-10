@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  html {
+    /* Stop iOS/old-WebKit from inflating text on orientation change. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-600 antialiased;
+    background-color: #f6f7fb;
+    font-feature-settings: 'cv11', 'ss01';
+    /* Guard against accidental horizontal scroll on narrow / notched screens. */
+    overflow-x: hidden;
+    /* Remove the grey tap flash on iOS/Android when pressing buttons. */
+    -webkit-tap-highlight-color: transparent;
+    /* Smooth momentum scrolling on legacy iOS. */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Make controls inherit the UI font and stay readable on every browser. */
+  input,
+  button,
+  select,
+  textarea {
+    font-family: inherit;
+  }
+
+  ::selection {
+    @apply bg-brand-500/20 text-brand-700;
+  }
+
+  /* Slim, modern scrollbars */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-300;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Full viewport height with a fallback for browsers without dvh
+     (iOS < 15.4, older Android WebView, legacy desktop). */
+  .min-h-dvh {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .glass {
+    @apply rounded-2xl border border-slate-200/80 bg-white/85 shadow-soft backdrop-blur-xl;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ease-out active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-r from-brand-500 to-accent-500 text-white shadow-glow hover:-translate-y-0.5 hover:brightness-[1.06] hover:shadow-lift;
+  }
+  .btn-ghost {
+    @apply btn border border-slate-200 bg-white text-slate-700 shadow-soft hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply btn border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100;
+  }
+
+  .label {
+    @apply text-xs font-medium uppercase tracking-wider text-slate-400;
+  }
+
+  /* text-base (16px) keeps iOS Safari from auto-zooming on focus. */
+  .auth-input {
+    @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-base text-slate-900 outline-none transition-all duration-200 placeholder:text-base placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15;
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-xl bg-slate-200/70;
+  }
+
+  /* Silky lift on hover for cards */
+  .card-hover {
+    @apply transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-card;
+  }
+}

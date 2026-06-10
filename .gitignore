@@ -1,0 +1,35 @@
+# dependencies
+node_modules/
+*/node_modules/
+
+# build output
+web/dist/
+server/public/
+server/dist/
+
+# test coverage
+coverage/
+
+# runtime data (contains login cookies / tokens — never commit)
+server/data/
+data.json
+*.local
+
+# logs
+logs/
+*.log
+npm-debug.log*
+pm2-*.log
+
+# env
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+.vscode/
+.idea/
+
+# typescript build info
+*.tsbuildinfo
