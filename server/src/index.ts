@@ -13,6 +13,7 @@ import { logger } from './logger.js'
 import apiRouter from './routes/api.js'
 import authRouter from './routes/auth.js'
 import { applySchedule } from './scheduler.js'
+import { startBackups } from './db.js'
 import { load } from './store.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -97,6 +98,7 @@ app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
 })
 
 load()
+startBackups()
 applySchedule()
 
 app.listen(config.port, () => {

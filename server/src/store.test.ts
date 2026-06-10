@@ -64,16 +64,32 @@ describe('hosted NetEase accounts (tenant isolation)', () => {
 })
 
 describe('encryption at rest', () => {
-  it('writes hosted-account cookies encrypted to disk', () => {
+  it('writes hosted-account cookies encrypted to the database', async () => {
     const owner = store.createAccount({ username: 'enc_user', password: 'pw-12345678' })
     store.upsertUser({ uid: 7001, ownerId: owner.id, cookie: 'MUSIC_U=plain-cookie' })
     store.save()
 
-    const raw = fs.readFileSync(path.join(dataDir, 'data.json'), 'utf8')
-    expect(raw).not.toContain('MUSIC_U=plain-cookie')
-    expect(raw).toContain('enc:v1:')
+    const { getDb } = await import('./db.js')
+    const row = getDb()
+      .prepare('SELECT data_json FROM netease_users WHERE uid = ?')
+      .get('7001') as { data_json: string }
+    expect(row.data_json).not.toContain('MUSIC_U=plain-cookie')
+    expect(row.data_json).toContain('enc:v1:')
 
     // In memory the cookie remains usable (decrypted).
     expect(store.getUser(7001)?.cookie).toBe('MUSIC_U=plain-cookie')
+  })
+})
+
+describe('removal', () => {
+  it('deletes hosted accounts from the database', async () => {
+    const owner = store.createAccount({ username: 'rm_user', password: 'pw-12345678' })
+    store.upsertUser({ uid: 8001, ownerId: owner.id })
+    store.removeUser(8001)
+    expect(store.getUser(8001)).toBeUndefined()
+
+    const { getDb } = await import('./db.js')
+    const row = getDb().prepare('SELECT uid FROM netease_users WHERE uid = ?').get('8001')
+    expect(row).toBeUndefined()
   })
 })

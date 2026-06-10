@@ -32,7 +32,7 @@
 | 工具链 | tsc 编译到 `dist/` · tsx 热重载开发 · ESLint（flat config，type-checked）· Prettier |
 | 鉴权 | scrypt 密码哈希 · HMAC 签名会话 Cookie（httpOnly）|
 | 加密 | 登录态 AES-256-GCM 落盘加密；网易云 weapi / eapi（AES + RSA，纯 Node `crypto`） |
-| 存储 | 本地加密 JSON 文件（零外部数据库，适合宝塔） |
+| 存储 | **SQLite（better-sqlite3，WAL）**：事务原子写 + 定时自动备份；旧版 data.json 首次启动自动迁移（零外部数据库，适合宝塔） |
 
 后端使用**严格 TypeScript** 编写，`npm run build` 经 `tsc` 编译为 `server/dist/`。前端构建产物输出到 `server/public`，由后端单进程同时托管 API 与页面 —— **一个 Node 进程即可运行整套应用**。
 
@@ -54,7 +54,8 @@ wangyiyun/
 │   │   │   ├── crypto.ts    #   scrypt 哈希 / AES-256-GCM / HMAC 会话令牌
 │   │   │   ├── auth.ts      #   会话签发与 requireAuth 中间件
 │   │   │   └── captcha.ts   #   自托管 SVG 图形验证码
-│   │   ├── store.ts        # 加密 JSON 存储（平台账号 + 托管账号）
+│   │   ├── db.ts           # SQLite（WAL）连接、schema 与自动备份
+│   │   ├── store.ts        # 存储层（平台账号 + 托管账号，cookie 加密落盘）
 │   │   ├── tasks.ts        # 签到 / 听歌 / 云贝 / 合伙人任务逻辑
 │   │   ├── scheduler.ts    # 全天 24 小时不间断任务循环（按用户开关）
 │   │   ├── routes/
@@ -162,5 +163,6 @@ npm run build           # tsc 编译到 dist/
 
 - 本项目调用网易云官方接口，接口行为可能随官方调整而变化。
 - 听歌打卡（刷听歌量）属于自动化行为，请自行评估账号风险，合理设置频率与数量。
-- 登录 cookie 等敏感数据经 AES-256-GCM 加密后仅存于 `server/data/`（已在 `.gitignore` 中忽略），请勿公开你的服务器或泄露该目录与 `SESSION_SECRET`。
+- 登录 cookie 等敏感数据经 AES-256-GCM 加密后仅存于 `server/data/`（SQLite 数据库 `lumen.db`，已在 `.gitignore` 中忽略），请勿公开你的服务器或泄露该目录与 `SESSION_SECRET`。
+- 数据库默认每 6 小时自动备份到 `server/data/backups/`（保留最近 20 份，可经 `BACKUP_INTERVAL_HOURS` / `BACKUP_KEEP` 调整）。旧版 `data.json` 在升级后首次启动时自动迁移进 SQLite 并改名为 `data.json.migrated` 保留。
 - 本项目仅供学习交流，请勿用于商业牟利或违反网易云用户协议的用途。

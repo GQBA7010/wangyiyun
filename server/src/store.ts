@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { config } from './config.js'
+import { getDb } from './db.js'
+import { logger } from './logger.js'
 import {
   decryptString,
   encryptString,
@@ -20,7 +22,8 @@ import type {
   SongPool,
 } from './types.js'
 
-const DATA_FILE = path.join(config.dataDir, 'data.json')
+/** Legacy JSON data file — imported into SQLite on first run, then renamed. */
+const LEGACY_DATA_FILE = path.join(config.dataDir, 'data.json')
 
 const DEFAULT_SETTINGS: Settings = {
   autoSignin: true,
@@ -46,61 +49,202 @@ function defaultData(): AppData {
 
 let cache: AppData | null = null
 
-function ensureDir(): void {
-  if (!fs.existsSync(config.dataDir)) fs.mkdirSync(config.dataDir, { recursive: true })
-}
-
 /** The active secret: env override wins, else the persisted random secret. */
 export function getSecret(): string {
   if (config.sessionSecret) return config.sessionSecret
   return load().secret
 }
 
+interface AccountRow {
+  id: string
+  username: string
+  username_lower: string
+  password_hash: string
+  created_at: number
+  last_login_at: number
+  scheduler_json: string
+}
+
+interface NeteaseUserRow {
+  uid: string
+  owner_id: string | null
+  data_json: string
+}
+
+function readMeta(key: string): string | null {
+  const row = getDb().prepare('SELECT value FROM meta WHERE key = ?').get(key) as
+    | { value: string }
+    | undefined
+  return row?.value ?? null
+}
+
+function writeMeta(key: string, value: string): void {
+  getDb()
+    .prepare(
+      'INSERT INTO meta (key, value) VALUES (?, ?) ' +
+        'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+    )
+    .run(key, value)
+}
+
+/**
+ * One-time import of the legacy data.json into SQLite. The original file is
+ * kept (renamed to data.json.migrated) so nothing is ever destroyed.
+ */
+function importLegacyJson(): Partial<AppData> | null {
+  if (!fs.existsSync(LEGACY_DATA_FILE)) return null
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(LEGACY_DATA_FILE, 'utf8'),
+    ) as Partial<AppData>
+    fs.renameSync(LEGACY_DATA_FILE, `${LEGACY_DATA_FILE}.migrated`)
+    logger.info('legacy data.json imported into SQLite (renamed to data.json.migrated)')
+    return parsed
+  } catch (e) {
+    // Never silently discard user data: keep the corrupt file for inspection.
+    logger.error(
+      { err: e instanceof Error ? e.message : String(e) },
+      'failed to parse legacy data.json — leaving file untouched',
+    )
+    return null
+  }
+}
+
 export function load(): AppData {
   if (cache) return cache
-  ensureDir()
-  let data = defaultData()
-  if (fs.existsSync(DATA_FILE)) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) as Partial<AppData>
-      data = { ...data, ...parsed }
-    } catch {
-      data = defaultData()
+  const db = getDb()
+
+  const data = defaultData()
+  data.secret = readMeta('secret') ?? ''
+
+  const hasAccounts =
+    (db.prepare('SELECT COUNT(*) AS n FROM accounts').get() as { n: number }).n > 0
+  const hasUsers =
+    (db.prepare('SELECT COUNT(*) AS n FROM netease_users').get() as { n: number }).n > 0
+
+  // First run with an existing JSON store: import it, then continue from SQLite.
+  if (!hasAccounts && !hasUsers && !data.secret) {
+    const legacy = importLegacyJson()
+    if (legacy) {
+      data.secret = legacy.secret ?? ''
+      data.accounts = legacy.accounts ?? {}
+      data.neteaseUsers = legacy.neteaseUsers ?? {}
+      data.songPool = legacy.songPool ?? data.songPool
+      cache = data
+      if (!config.sessionSecret && !cache.secret) cache.secret = randomSecret()
+      const secret = config.sessionSecret || cache.secret
+      for (const u of Object.values(cache.neteaseUsers)) {
+        if (u.cookie) u.cookie = decryptString(u.cookie, secret)
+      }
+      persist()
+      return cache
     }
   }
-  cache = data
 
-  // Ensure a persistent secret exists (only used when no env secret is set).
+  const pool = readMeta('songPool')
+  if (pool) {
+    try {
+      data.songPool = JSON.parse(pool) as SongPool
+    } catch {
+      /* keep default */
+    }
+  }
+
+  for (const row of db.prepare('SELECT * FROM accounts').all() as AccountRow[]) {
+    data.accounts[row.id] = {
+      id: row.id,
+      username: row.username,
+      usernameLower: row.username_lower,
+      passwordHash: row.password_hash,
+      createdAt: row.created_at,
+      lastLoginAt: row.last_login_at,
+      scheduler: JSON.parse(row.scheduler_json) as SchedulerState,
+    }
+  }
+
+  cache = data
   if (!config.sessionSecret && !cache.secret) {
     cache.secret = randomSecret()
   }
-
-  // Decrypt at-rest cookies into the in-memory cache so the rest of the app
-  // works with plaintext. Disk always stays encrypted (see persist()).
   const secret = config.sessionSecret || cache.secret
-  for (const u of Object.values(cache.neteaseUsers)) {
-    if (u.cookie) u.cookie = decryptString(u.cookie, secret)
+
+  for (const row of db.prepare('SELECT * FROM netease_users').all() as NeteaseUserRow[]) {
+    const user = JSON.parse(row.data_json) as NeteaseUser
+    if (user.cookie) user.cookie = decryptString(user.cookie, secret)
+    data.neteaseUsers[row.uid] = user
   }
 
   persist()
   return cache
 }
 
-/** Serialise the cache to disk with sensitive fields encrypted. */
+/** Sync the in-memory cache into SQLite atomically (cookies encrypted). */
 function persist(): void {
   if (!cache) return
-  ensureDir()
+  const db = getDb()
   const secret = config.sessionSecret || cache.secret
-  const onDisk: AppData = {
-    ...cache,
-    neteaseUsers: Object.fromEntries(
-      Object.entries(cache.neteaseUsers).map(([uid, u]) => [
+  const state = cache
+
+  const upsertAccount = db.prepare(
+    `INSERT INTO accounts
+       (id, username, username_lower, password_hash, created_at, last_login_at, scheduler_json)
+     VALUES (@id, @username, @usernameLower, @passwordHash, @createdAt, @lastLoginAt, @scheduler)
+     ON CONFLICT(id) DO UPDATE SET
+       username = excluded.username,
+       username_lower = excluded.username_lower,
+       password_hash = excluded.password_hash,
+       created_at = excluded.created_at,
+       last_login_at = excluded.last_login_at,
+       scheduler_json = excluded.scheduler_json`,
+  )
+  const upsertNetease = db.prepare(
+    `INSERT INTO netease_users (uid, owner_id, data_json)
+     VALUES (@uid, @ownerId, @data)
+     ON CONFLICT(uid) DO UPDATE SET
+       owner_id = excluded.owner_id,
+       data_json = excluded.data_json`,
+  )
+  const deleteAccountsNotIn = db.prepare('DELETE FROM accounts WHERE id = ?')
+  const deleteUsersNotIn = db.prepare('DELETE FROM netease_users WHERE uid = ?')
+
+  db.transaction(() => {
+    writeMeta('secret', state.secret)
+    writeMeta('songPool', JSON.stringify(state.songPool))
+
+    const accountIds = new Set(Object.keys(state.accounts))
+    for (const row of db.prepare('SELECT id FROM accounts').all() as { id: string }[]) {
+      if (!accountIds.has(row.id)) deleteAccountsNotIn.run(row.id)
+    }
+    for (const acc of Object.values(state.accounts)) {
+      upsertAccount.run({
+        id: acc.id,
+        username: acc.username,
+        usernameLower: acc.usernameLower,
+        passwordHash: acc.passwordHash,
+        createdAt: acc.createdAt,
+        lastLoginAt: acc.lastLoginAt,
+        scheduler: JSON.stringify(acc.scheduler),
+      })
+    }
+
+    const uids = new Set(Object.keys(state.neteaseUsers))
+    for (const row of db.prepare('SELECT uid FROM netease_users').all() as {
+      uid: string
+    }[]) {
+      if (!uids.has(row.uid)) deleteUsersNotIn.run(row.uid)
+    }
+    for (const [uid, u] of Object.entries(state.neteaseUsers)) {
+      const onDisk: NeteaseUser = {
+        ...u,
+        cookie: u.cookie ? encryptString(u.cookie, secret) : u.cookie,
+      }
+      upsertNetease.run({
         uid,
-        { ...u, cookie: u.cookie ? encryptString(u.cookie, secret) : u.cookie },
-      ]),
-    ),
-  }
-  fs.writeFileSync(DATA_FILE, JSON.stringify(onDisk, null, 2))
+        ownerId: u.ownerId ?? null,
+        data: JSON.stringify(onDisk),
+      })
+    }
+  })()
 }
 
 export function save(): void {
