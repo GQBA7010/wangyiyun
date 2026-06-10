@@ -5,7 +5,8 @@ module.exports = {
     {
       name: 'wangyiyun',
       cwd: __dirname,
-      script: 'server/src/index.js',
+      // 运行编译后的产物（先在 server/ 执行 `npm run build` 生成 dist/）。
+      script: 'server/dist/index.js',
       interpreter: 'node',
       env: {
         NODE_ENV: 'production',

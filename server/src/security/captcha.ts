@@ -15,18 +15,27 @@ const CODE_LENGTH = 4
 const TTL_MS = 5 * 60 * 1000
 const MAX_PENDING = 5000
 
-/** id -> { answer: string (lowercase), exp: number } */
-const store = new Map()
+interface Challenge {
+  answer: string // lowercase
+  exp: number
+}
 
-function rand(min, max) {
+export interface Captcha {
+  id: string
+  svg: string
+}
+
+const store = new Map<string, Challenge>()
+
+function rand(min: number, max: number): number {
   return min + Math.floor(Math.random() * (max - min + 1))
 }
 
-function pick(arr) {
-  return arr[rand(0, arr.length - 1)]
+function pick<T>(arr: readonly T[]): T {
+  return arr[rand(0, arr.length - 1)] as T
 }
 
-function sweep() {
+function sweep(): void {
   const now = Date.now()
   for (const [id, v] of store) {
     if (v.exp <= now) store.delete(id)
@@ -42,19 +51,19 @@ function sweep() {
   }
 }
 
-function randomCode() {
+function randomCode(): string {
   let code = ''
-  for (let i = 0; i < CODE_LENGTH; i++) code += pick(ALPHABET)
+  for (let i = 0; i < CODE_LENGTH; i++) code += pick(ALPHABET.split(''))
   return code
 }
 
-function renderSvg(code) {
+function renderSvg(code: string): string {
   const width = 130
   const height = 48
   const colors = ['#4f46e5', '#0d9488', '#db2777', '#7c3aed', '#0369a1', '#b45309']
   const cellW = (width - 20) / code.length
 
-  const noise = []
+  const noise: string[] = []
   // Faint connecting curves.
   for (let i = 0; i < 4; i++) {
     const x1 = rand(0, width)
@@ -95,7 +104,7 @@ function renderSvg(code) {
 }
 
 /** Create a new challenge. Returns the opaque id and the SVG markup to render. */
-export function createCaptcha() {
+export function createCaptcha(): Captcha {
   sweep()
   const id = crypto.randomBytes(16).toString('hex')
   const code = randomCode()
@@ -107,7 +116,7 @@ export function createCaptcha() {
  * Verify a user's answer. Challenges are single-use: the entry is removed on
  * the first verification attempt regardless of outcome.
  */
-export function verifyCaptcha(id, input) {
+export function verifyCaptcha(id: unknown, input: unknown): boolean {
   if (typeof id !== 'string' || typeof input !== 'string') return false
   const entry = store.get(id)
   if (!entry) return false

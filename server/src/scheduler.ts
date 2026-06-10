@@ -1,4 +1,5 @@
 import { getAccountScheduler, getUser, listUsers } from './store.js'
+import { logger } from './logger.js'
 import {
   runPartnerEvaluate,
   runScrobble,
@@ -6,18 +7,23 @@ import {
   runUserTasks,
   runYunbeiTasks,
 } from './tasks.js'
+import type { NeteaseUser } from './types.js'
 
 let loopActive = false // the continuous loop is currently running
 let busy = false // a task batch is currently executing (manual or loop)
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 const CYCLE_GAP_MS = 5000 // short breather between full listen cycles
 const IDLE_GAP_MS = 15000 // longer wait when nobody has auto-listen enabled
 
+function errMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
 /** True if a timestamp falls within today (Asia/Shanghai). */
-function isToday(ts) {
+function isToday(ts: number | undefined): boolean {
   if (!ts) return false
-  const opts = { timeZone: 'Asia/Shanghai' }
+  const opts: Intl.DateTimeFormatOptions = { timeZone: 'Asia/Shanghai' }
   return (
     new Date(ts).toLocaleDateString('en-CA', opts) ===
     new Date().toLocaleDateString('en-CA', opts)
@@ -25,12 +31,12 @@ function isToday(ts) {
 }
 
 /** Whether a hosted account's owner has 24/7 auto-listen enabled. */
-function ownerEnabled(user) {
-  return !!getAccountScheduler(user.ownerId)?.enabled
+function ownerEnabled(user: NeteaseUser): boolean {
+  return !!(user.ownerId && getAccountScheduler(user.ownerId).enabled)
 }
 
 /** Manual one-shot: run all enabled tasks once for a single owner's accounts. */
-async function runAll(ownerId) {
+export async function runAll(ownerId: string): Promise<void> {
   if (busy) return
   busy = true
   try {
@@ -38,8 +44,7 @@ async function runAll(ownerId) {
       try {
         await runUserTasks(user.uid)
       } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error(`[scheduler] task failed for ${user.uid}:`, e.message)
+        logger.error({ uid: user.uid, err: errMessage(e) }, 'scheduler task failed')
       }
     }
   } finally {
@@ -52,13 +57,11 @@ async function runAll(ownerId) {
  * only acts on accounts whose owner has enabled auto-listen. Daily sign-in /
  * yunbei tasks run once per day per account; listening repeats indefinitely.
  */
-async function continuousLoop() {
+async function continuousLoop(): Promise<void> {
   if (loopActive) return
   loopActive = true
-  // eslint-disable-next-line no-console
-  console.log('[scheduler] continuous 24/7 auto-listen worker started')
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  logger.info('continuous 24/7 auto-listen worker started')
+  for (;;) {
     const users = listUsers().filter(ownerEnabled)
     if (!users.length) {
       await sleep(IDLE_GAP_MS)
@@ -69,28 +72,27 @@ async function continuousLoop() {
       busy = true
       try {
         const fresh = getUser(user.uid)
-        if (user.settings?.autoSignin && !isToday(fresh?.lastSignin?.at)) {
+        if (user.settings.autoSignin && !isToday(fresh?.lastSignin?.at)) {
           await runSignin(user.uid)
         }
-        if (user.settings?.autoTasks && !isToday(fresh?.lastYunbei?.at)) {
+        if (user.settings.autoTasks && !isToday(fresh?.lastYunbei?.at)) {
           await runYunbeiTasks(user.uid)
         }
         // Music-partner evaluation runs every cycle ("刷新了就评价"), but skip
         // accounts we already know lack qualification (checked today) so the
         // logs don't fill up with repeated "无测评资格" entries.
-        if (user.settings?.autoPartner) {
+        if (user.settings.autoPartner) {
           const ineligibleToday =
             fresh?.lastPartner?.eligible === false && isToday(fresh?.lastPartner?.at)
           if (!ineligibleToday) {
             await runPartnerEvaluate(user.uid)
           }
         }
-        if (user.settings?.autoScrobble) {
+        if (user.settings.autoScrobble) {
           await runScrobble(user.uid)
         }
       } catch (e) {
-        // eslint-disable-next-line no-console
-        console.error(`[scheduler] loop failed for ${user.uid}:`, e.message)
+        logger.error({ uid: user.uid, err: errMessage(e) }, 'scheduler loop failed')
       } finally {
         busy = false
       }
@@ -100,8 +102,6 @@ async function continuousLoop() {
 }
 
 /** Start the continuous auto-listen worker (idempotent). */
-export function applySchedule() {
-  if (!loopActive) continuousLoop()
+export function applySchedule(): void {
+  if (!loopActive) void continuousLoop()
 }
-
-export { runAll }

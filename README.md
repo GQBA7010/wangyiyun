@@ -16,42 +16,58 @@
 - **多账号管理**：支持同时托管多个账号，每个账号独立开关、独立日志。
 - **登录态检测**：一键检测 cookie 是否过期，过期后自动标记提示重新扫码。
 - **一键执行**：除了全天自动听歌，还支持一键立即为所有账号执行全部已开启的任务。
-- **现代化界面**：深色玻璃拟态 UI，响应式，含进度、状态与运行日志。
+- **音乐合伙人自动评测**：全天自动拉取「音乐合伙人」当日 / 额外评测任务并自动提交评分（每用户可选评分策略），无资格账号当天自动跳过、跨日恢复；开关可控。
+- **功能状态总览**：每个账号顶部以状态卡集中展示签到 / 听歌 / 云贝 / 合伙人各功能的开启状态与上次执行结果。
+- **现代化界面**：白色浅色主题，丝滑过渡与弹窗动效，全面响应式（移动端 / iOS / 平板 / 桌面 / 跨浏览器适配），含进度、状态与运行日志。
 
 ## 🧱 技术栈
 
 | 层 | 技术 |
 | --- | --- |
 | 前端 | React 18 · Vite · TypeScript · Tailwind CSS |
-| 后端 | Node.js · Express · Helmet · 速率限制 · gzip |
+| 后端 | Node.js ≥ 18 · **TypeScript（strict）** · Express · Helmet · 速率限制 · gzip |
+| 校验 | **zod**：环境变量解析 + 请求体 schema 校验 |
+| 日志 | **pino · pino-http**：结构化 JSON 访问日志（自动脱敏 Cookie）|
+| 测试 | **vitest**：覆盖加密 / 验证码 / 存储 / 配置等安全核心模块 |
+| 工具链 | tsc 编译到 `dist/` · tsx 热重载开发 · ESLint（flat config，type-checked）· Prettier |
 | 鉴权 | scrypt 密码哈希 · HMAC 签名会话 Cookie（httpOnly）|
 | 加密 | 登录态 AES-256-GCM 落盘加密；网易云 weapi / eapi（AES + RSA，纯 Node `crypto`） |
-| 存储 | 本地 JSON 文件（零依赖、免编译，适合宝塔） |
+| 存储 | 本地加密 JSON 文件（零外部数据库，适合宝塔） |
 
-前端构建产物会直接输出到 `server/public`，由后端单进程同时托管 API 与页面 —— **一个 Node 进程即可运行整套应用**。
+后端使用**严格 TypeScript** 编写，`npm run build` 经 `tsc` 编译为 `server/dist/`。前端构建产物输出到 `server/public`，由后端单进程同时托管 API 与页面 —— **一个 Node 进程即可运行整套应用**。
 
 ## 📁 目录结构
 
 ```
 wangyiyun/
-├── server/                 # 后端
-│   └── src/
-│       ├── index.js        # Express 入口（API + 静态托管）
-│       ├── netease/        # 网易云加密与接口封装
-│       │   ├── crypto.js    #   weapi / eapi 加解密
-│       │   └── api.js       #   扫码登录 / 签到 / 听歌等接口
-│       ├── config.js       # 集中式运行配置（读环境变量）
-│       ├── security/       # 安全：加密、密码哈希、会话鉴权
-│       │   ├── crypto.js    #   scrypt 哈希 / AES-256-GCM / HMAC 会话令牌
-│       │   └── auth.js      #   会话签发与 requireAuth 中间件
-│       ├── store.js        # JSON 存储（平台账号 + 托管账号，登录态加密落盘）
-│       ├── tasks.js        # 签到 / 听歌打卡任务逻辑（含去重）
-│       ├── scheduler.js    # 全天 24 小时不间断听歌循环（按用户开关）
-│       └── routes/
-│           ├── auth.js      #   注册 / 登录 / 退出 / 当前用户
-│           └── api.js       #   托管账号相关 REST API（按归属隔离）
+├── server/                 # 后端（严格 TypeScript，ESM）
+│   ├── src/
+│   │   ├── index.ts        # Express 入口（API + 静态托管 + pino-http 日志）
+│   │   ├── config.ts       # zod 解析环境变量，导出类型化配置
+│   │   ├── logger.ts       # pino 结构化日志实例
+│   │   ├── types.ts        # 领域类型集中定义
+│   │   ├── express.d.ts    # Express Request 类型增强
+│   │   ├── netease/        # 网易云加密与接口封装
+│   │   │   ├── crypto.ts    #   weapi / eapi 加解密
+│   │   │   └── api.ts       #   扫码登录 / 签到 / 听歌 / 云贝 / 合伙人接口
+│   │   ├── security/       # 安全：加密、密码哈希、会话鉴权、验证码
+│   │   │   ├── crypto.ts    #   scrypt 哈希 / AES-256-GCM / HMAC 会话令牌
+│   │   │   ├── auth.ts      #   会话签发与 requireAuth 中间件
+│   │   │   └── captcha.ts   #   自托管 SVG 图形验证码
+│   │   ├── store.ts        # 加密 JSON 存储（平台账号 + 托管账号）
+│   │   ├── tasks.ts        # 签到 / 听歌 / 云贝 / 合伙人任务逻辑
+│   │   ├── scheduler.ts    # 全天 24 小时不间断任务循环（按用户开关）
+│   │   ├── routes/
+│   │   │   ├── auth.ts      #   注册 / 登录 / 退出 / 当前用户（zod 校验）
+│   │   │   └── api.ts       #   托管账号相关 REST API（按归属隔离）
+│   │   └── **/*.test.ts    # vitest 单元测试
+│   ├── tsconfig.json       # 类型检查 / lint 用（含测试）
+│   ├── tsconfig.build.json # 构建用（仅 src，排除测试）
+│   ├── eslint.config.js    # ESLint flat config（type-checked）
+│   ├── vitest.config.ts    # 测试配置
+│   └── .prettierrc.json    # Prettier 配置
 ├── web/                    # 前端（React + Vite）
-├── ecosystem.config.cjs    # PM2 进程配置
+├── ecosystem.config.cjs    # PM2 进程配置（指向 server/dist/index.js）
 └── package.json            # 根脚本（build / start / deploy）
 ```
 
@@ -64,12 +80,22 @@ wangyiyun/
 npm run install:all
 
 # 2. 开发模式（两个终端）
-npm run dev:server      # 后端 http://localhost:3000
+npm run dev:server      # 后端 http://localhost:3000（tsx watch，保存即重启）
 npm run dev:web         # 前端 http://localhost:5173（已代理 /api 到后端）
 
-# 或：生产模式（构建前端 + 启动后端，一个进程）
+# 或：生产模式（构建前端 + 编译后端 + 启动，一个进程）
 npm run build
 npm start               # http://localhost:3000
+```
+
+后端质量校验（在 `server/` 目录执行）：
+
+```bash
+npm run typecheck       # tsc --noEmit，0 类型错误
+npm run lint            # ESLint（type-checked 规则）
+npm run test            # vitest 单元测试
+npm run format:check    # Prettier 风格校验
+npm run build           # tsc 编译到 dist/
 ```
 
 ## 🛰️ 宝塔面板部署（推荐）
@@ -86,7 +112,7 @@ npm start               # http://localhost:3000
    pm2 start ecosystem.config.cjs
    pm2 save           # 保存进程列表，开机自启
    ```
-   或在宝塔 PM2 管理器里「添加项目」，启动文件选择 `server/src/index.js`，运行目录为项目根目录。
+   或在宝塔 PM2 管理器里「添加项目」，启动文件选择 `server/dist/index.js`（需先 `npm run build`），运行目录为项目根目录。
 5. **反向代理 + HTTPS（对外公开务必启用）**：在宝塔新建站点，设置「反向代理」到 `http://127.0.0.1:3000`，再一键申请 SSL 证书用域名 HTTPS 访问。会话 Cookie 默认仅在 HTTPS 下发送（`COOKIE_SECURE=true`）。
 6. **配置安全密钥**：编辑 `ecosystem.config.cjs` 或环境变量，设置随机 `SESSION_SECRET`（见下方「安全」）。
 7. **访问面板**：打开你的域名 → **注册 / 登录** → 点「添加账号」→ 用网易云 App 扫码 → 打开「自动签到 / 自动听歌打卡」开关 → 开启「全天自动听歌」→ 完成，后台会 24 小时不间断自动运行。
@@ -126,6 +152,7 @@ npm start               # http://localhost:3000
 | POST | `/api/users/:uid/refresh` | 刷新等级 / 听歌量 |
 | POST | `/api/users/:uid/check` | 检测登录态是否有效 |
 | POST | `/api/users/:uid/tasks` | 立即执行云贝任务（自动完成可自动化项 + 自动领奖） |
+| POST | `/api/users/:uid/partner` | 立即执行音乐合伙人评测（自动提交评分） |
 | GET/POST | `/api/scheduler` | 查看 / 开关当前用户的全天自动听歌（`enabled`） |
 | POST | `/api/run-all` | 立即为当前用户的所有账号执行全部已开启的任务 |
 

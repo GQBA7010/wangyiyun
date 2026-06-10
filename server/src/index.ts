@@ -1,12 +1,15 @@
-import path from 'node:path'
 import fs from 'node:fs'
+import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
+import type { NextFunction, Request, Response } from 'express'
 import helmet from 'helmet'
 import compression from 'compression'
 import cookieParser from 'cookie-parser'
 import rateLimit from 'express-rate-limit'
+import { pinoHttp } from 'pino-http'
 import { config } from './config.js'
+import { logger } from './logger.js'
 import apiRouter from './routes/api.js'
 import authRouter from './routes/auth.js'
 import { applySchedule } from './scheduler.js'
@@ -18,6 +21,20 @@ const PUBLIC_DIR = path.join(__dirname, '..', 'public')
 const app = express()
 app.disable('x-powered-by')
 app.set('trust proxy', config.trustProxy)
+
+// --- Observability --------------------------------------------------------
+app.use(
+  pinoHttp({
+    logger,
+    // Quiet, structured access logs; redact the auth cookie from request logs.
+    redact: ['req.headers.cookie', 'res.headers["set-cookie"]'],
+    customLogLevel(_req, res, err) {
+      if (err || res.statusCode >= 500) return 'error'
+      if (res.statusCode >= 400) return 'warn'
+      return 'info'
+    },
+  }),
+)
 
 // --- Security & platform middleware ---------------------------------------
 app.use(
@@ -56,34 +73,43 @@ app.use(
 )
 
 // --- Routes ---------------------------------------------------------------
-app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }))
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ ok: true, ts: Date.now() })
+})
 app.use('/api/auth', authRouter)
 app.use('/api', apiRouter)
 
 // Serve the built frontend (web/dist copied to server/public on build).
 if (fs.existsSync(PUBLIC_DIR)) {
   app.use(express.static(PUBLIC_DIR))
-  app.get('*', (req, res, next) => {
+  app.get('*', (req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith('/api')) return next()
     res.sendFile(path.join(PUBLIC_DIR, 'index.html'))
   })
 }
 
+// Centralised error handler: never leak stack traces to clients.
+app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+  const message = err instanceof Error ? err.message : String(err)
+  req.log?.error({ err: message }, 'unhandled request error')
+  if (res.headersSent) return
+  res.status(500).json({ ok: false, error: '服务器内部错误' })
+})
+
 load()
 applySchedule()
 
 app.listen(config.port, () => {
-  // eslint-disable-next-line no-console
-  console.log(`Lumen 控制台已启动: http://localhost:${config.port}`)
+  logger.info(`Lumen 控制台已启动: http://localhost:${config.port}`)
   if (!config.sessionSecret) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      '[security] 未设置 SESSION_SECRET，已生成随机密钥并持久化到数据目录。' +
+    logger.warn(
+      '未设置 SESSION_SECRET，已生成随机密钥并持久化到数据目录。' +
         '生产环境建议在环境变量中显式设置 SESSION_SECRET。',
     )
   }
   if (!config.cookieSecure) {
-    // eslint-disable-next-line no-console
-    console.warn('[security] Cookie Secure 已关闭（COOKIE_SECURE=false）——仅建议在无 HTTPS 的内网使用。')
+    logger.warn(
+      'Cookie Secure 已关闭（COOKIE_SECURE=false）——仅建议在无 HTTPS 的内网使用。',
+    )
   }
 })

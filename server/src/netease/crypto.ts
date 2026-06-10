@@ -14,33 +14,47 @@ BUrX/aKzmFbt7clFSs6sXqHauqKWqdtLkF2KexO40H1YTX8z2lSgBBOAxLsvaklV8k
 z7OBGLbCiK45wIDAQAB
 -----END PUBLIC KEY-----`
 
-function aesEncrypt(buffer, mode, key, iv) {
+type AesMode = 'cbc' | 'ecb'
+
+function aesEncrypt(
+  buffer: Buffer,
+  mode: AesMode,
+  key: Buffer,
+  iv: crypto.BinaryLike,
+): Buffer {
   const cipher = crypto.createCipheriv(`aes-128-${mode}`, key, iv)
   return Buffer.concat([cipher.update(buffer), cipher.final()])
 }
 
-function aesDecrypt(buffer, mode, key, iv) {
+function aesDecrypt(
+  buffer: Buffer,
+  mode: AesMode,
+  key: Buffer,
+  iv: crypto.BinaryLike,
+): Buffer {
   const decipher = crypto.createDecipheriv(`aes-128-${mode}`, key, iv)
   return Buffer.concat([decipher.update(buffer), decipher.final()])
 }
 
-function rsaEncrypt(buffer, key) {
+function rsaEncrypt(buffer: Buffer, key: string): Buffer {
   const padded = Buffer.concat([Buffer.alloc(128 - buffer.length), buffer])
-  return crypto.publicEncrypt(
-    { key, padding: crypto.constants.RSA_NO_PADDING },
-    padded,
-  )
+  return crypto.publicEncrypt({ key, padding: crypto.constants.RSA_NO_PADDING }, padded)
+}
+
+export interface WeapiPayload {
+  params: string
+  encSecKey: string
 }
 
 /**
  * Encrypt a payload for a `/weapi/*` endpoint.
  * Returns the `params` + `encSecKey` form fields the web client posts.
  */
-export function weapi(object) {
+export function weapi(object: unknown): WeapiPayload {
   const text = JSON.stringify(object)
-  const secretKey = crypto
-    .randomBytes(16)
-    .map((n) => BASE62.charCodeAt(n % 62))
+  const secretKey = Buffer.from(
+    crypto.randomBytes(16).map((n) => BASE62.charCodeAt(n % 62)),
+  )
   return {
     params: aesEncrypt(
       Buffer.from(
@@ -50,18 +64,20 @@ export function weapi(object) {
       secretKey,
       IV,
     ).toString('base64'),
-    encSecKey: rsaEncrypt(Buffer.from(secretKey).reverse(), PUBLIC_KEY).toString(
-      'hex',
-    ),
+    encSecKey: rsaEncrypt(Buffer.from(secretKey).reverse(), PUBLIC_KEY).toString('hex'),
   }
+}
+
+export interface EapiPayload {
+  params: string
 }
 
 /**
  * Encrypt a payload for an `/eapi/*` endpoint.
  * `url` is the api path used in the signature (e.g. `/api/feedback/weblog`).
  */
-export function eapi(url, object) {
-  const text = typeof object === 'object' ? JSON.stringify(object) : object
+export function eapi(url: string, object: unknown): EapiPayload {
+  const text = typeof object === 'string' ? object : JSON.stringify(object)
   const message = `nobody${url}use${text}md5forencrypt`
   const digest = crypto.createHash('md5').update(message).digest('hex')
   const data = `${url}-36cd479b6b5-${text}-36cd479b6b5-${digest}`
@@ -73,6 +89,6 @@ export function eapi(url, object) {
 }
 
 /** Decrypt an eapi response body (hex string) back into JSON text. */
-export function eapiResDecrypt(hexString) {
+export function eapiResDecrypt(hexString: string): string {
   return aesDecrypt(Buffer.from(hexString, 'hex'), 'ecb', EAPI_KEY, '').toString()
 }

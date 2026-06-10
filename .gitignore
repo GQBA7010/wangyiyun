@@ -5,6 +5,10 @@ node_modules/
 # build output
 web/dist/
 server/public/
+server/dist/
+
+# test coverage
+coverage/
 
 # runtime data (contains login cookies / tokens — never commit)
 server/data/
