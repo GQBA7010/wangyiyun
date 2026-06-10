@@ -15,7 +15,7 @@ export function ToastStack({
   dismiss: (id: number) => void
 }) {
   return (
-    <div className="pointer-events-none fixed bottom-6 right-6 z-[80] flex flex-col gap-3">
+    <div className="pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[80] flex flex-col items-center gap-3 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:items-end">
       {toasts.map((t) => (
         <Toast key={t.id} toast={t} dismiss={dismiss} />
       ))}
@@ -41,8 +41,8 @@ function Toast({ toast, dismiss }: { toast: ToastItem; dismiss: (id: number) => 
 
   return (
     <div
-      className={`glass pointer-events-auto flex max-w-sm items-start gap-3 px-4 py-3 shadow-card transition-all duration-200 ease-out ${
-        shown ? 'translate-x-0 opacity-100' : 'translate-x-4 opacity-0'
+      className={`glass pointer-events-auto flex w-full max-w-sm items-start gap-3 px-4 py-3 shadow-card transition-all duration-200 ease-out sm:w-auto ${
+        shown ? 'translate-y-0 opacity-100 sm:translate-x-0' : 'translate-y-2 opacity-0 sm:translate-x-4 sm:translate-y-0'
       }`}
     >
       {toast.ok ? (

@@ -133,8 +133,8 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-mesh">
-      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:py-12">
+    <div className="min-h-[100dvh] bg-mesh">
+      <div className="mx-auto max-w-6xl px-4 py-8 [padding-bottom:calc(env(safe-area-inset-bottom)+2rem)] [padding-left:max(1rem,env(safe-area-inset-left))] [padding-right:max(1rem,env(safe-area-inset-right))] sm:px-6 lg:py-12">
         {/* header */}
         <header className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div>

@@ -177,7 +177,7 @@ export function AccountCard({
                   scrobbleCount: Math.max(1, Math.min(500, Number(e.target.value) || 300)),
                 })
               }
-              className="w-20 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-right text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15"
+              className="w-20 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-right text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15"
             />
           </div>
         )}

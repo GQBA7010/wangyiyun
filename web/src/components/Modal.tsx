@@ -43,7 +43,9 @@ export function Modal({ onClose, children, className = '', zClass = 'z-50' }: Mo
   }, [close])
 
   return (
-    <div className={`fixed inset-0 ${zClass} flex items-center justify-center p-4`}>
+    <div
+      className={`fixed inset-0 ${zClass} flex items-center justify-center overflow-y-auto p-4 [padding-bottom:max(1rem,env(safe-area-inset-bottom))] [padding-top:max(1rem,env(safe-area-inset-top))]`}
+    >
       <div
         onClick={close}
         className={`absolute inset-0 bg-slate-900/30 backdrop-blur-sm transition-opacity duration-200 ease-out ${
@@ -51,7 +53,7 @@ export function Modal({ onClose, children, className = '', zClass = 'z-50' }: Mo
         }`}
       />
       <div
-        className={`relative w-full ${className} transition-all duration-200 ease-out ${
+        className={`relative my-auto w-full ${className} transition-all duration-200 ease-out ${
           open ? 'translate-y-0 scale-100 opacity-100' : 'translate-y-2 scale-95 opacity-0'
         }`}
       >
