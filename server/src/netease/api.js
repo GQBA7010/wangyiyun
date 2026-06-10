@@ -36,8 +36,10 @@ export function mergeCookies(existing = '', setCookie = []) {
 }
 
 /**
- * Low-level weapi POST. Returns { status, data, cookies } where `cookies` is
- * the array of Set-Cookie header lines from the response.
+ * Low-level weapi POST. Returns { status, data, cookies, mergedCookie } where
+ * `cookies` is the array of Set-Cookie header lines from the response and
+ * `mergedCookie` is the original cookie updated with any new values from the
+ * response (useful for keeping sessions alive).
  */
 export async function weapiRequest(path, payload = {}, cookie = '') {
   const data = { ...payload, csrf_token: readCsrf(cookie) }
@@ -56,10 +58,12 @@ export async function weapiRequest(path, payload = {}, cookie = '') {
     timeout: 15000,
     validateStatus: () => true,
   })
+  const setCookie = res.headers['set-cookie'] || []
   return {
     status: res.status,
     data: res.data,
-    cookies: res.headers['set-cookie'] || [],
+    cookies: setCookie,
+    mergedCookie: cookie && setCookie.length ? mergeCookies(cookie, setCookie) : cookie,
   }
 }
 
@@ -101,6 +105,20 @@ export async function qrCheck(key) {
 export async function accountInfo(cookie) {
   const { data } = await weapiRequest('/w/nuser/account/get', {}, cookie)
   return data
+}
+
+/**
+ * Lightweight session-validity check. Returns true if the cookie still
+ * carries a valid login; false if the session has expired (code 301 or
+ * missing account).
+ */
+export async function checkSession(cookie) {
+  try {
+    const info = await accountInfo(cookie)
+    return !!(info?.account?.id || info?.profile?.userId)
+  } catch {
+    return false
+  }
 }
 
 /** Fetch user detail (level, listenSongs count, profile). */
@@ -150,5 +168,42 @@ export async function scrobble(id, time, cookie, sourceId = '') {
     },
   ])
   const { data } = await weapiRequest('/feedback/weblog', { logs }, cookie)
+  return data
+}
+
+// ---------------------------------------------------------------------------
+// Yunbei task-center APIs
+// ---------------------------------------------------------------------------
+
+/** Fetch all yunbei tasks (completed and incomplete). */
+export async function yunbeiTasksTodo(cookie) {
+  const { data } = await weapiRequest(
+    '/usertool/task/todo/query',
+    {},
+    cookie,
+  )
+  return data
+}
+
+/**
+ * Claim a completed yunbei task reward.
+ * Only works when userTaskId > 0 (the underlying action was already done).
+ */
+export async function yunbeiTaskFinish(userTaskId, depositCode, cookie) {
+  const { data } = await weapiRequest('/usertool/task/point/receive', {
+    userTaskId,
+    depositCode: depositCode || 0,
+  }, cookie)
+  return data
+}
+
+/** Like / "collect" a song (adds to 我喜欢的音乐). */
+export async function likeSong(trackId, cookie) {
+  const { data } = await weapiRequest('/radio/like', {
+    alg: 'itembased',
+    trackId,
+    like: true,
+    time: 25,
+  }, cookie)
   return data
 }

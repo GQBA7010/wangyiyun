@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import {
+  AlertTriangle,
   CalendarCheck,
   ChevronDown,
+  Gift,
   Headphones,
   Loader2,
   Music2,
   RefreshCw,
+  ShieldCheck,
   Trash2,
 } from 'lucide-react'
 import { api, type User, type UserSettings } from '../lib/api'
@@ -43,7 +46,7 @@ export function AccountCard({
   }
 
   const run = async (
-    kind: 'signin' | 'scrobble' | 'refresh',
+    kind: 'signin' | 'scrobble' | 'refresh' | 'check' | 'tasks',
     fn: () => Promise<{ user: User; message?: string }>,
   ) => {
     setBusy(kind)
@@ -80,9 +83,21 @@ export function AccountCard({
           </span>
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-lg font-bold text-white">
-            {user.nickname || `用户 ${user.uid}`}
-          </h3>
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-lg font-bold text-white">
+              {user.nickname || `用户 ${user.uid}`}
+            </h3>
+            {user.status === 'expired' && (
+              <span className="flex items-center gap-1 rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-400">
+                <AlertTriangle className="h-3 w-3" /> 已过期
+              </span>
+            )}
+            {user.status === 'active' && (
+              <span className="flex items-center gap-1 rounded-full bg-accent-500/15 px-2 py-0.5 text-[10px] font-semibold text-accent-400">
+                <ShieldCheck className="h-3 w-3" /> 在线
+              </span>
+            )}
+          </div>
           <p className="text-xs text-slate-400">UID · {user.uid}</p>
         </div>
         <button
@@ -131,6 +146,15 @@ export function AccountCard({
           onChange={(v) => patchSettings({ autoScrobble: v })}
         />
 
+        <div className="h-px bg-white/[0.06]" />
+        <ToggleRow
+          icon={<Gift className="h-4 w-4 text-amber-400" />}
+          title="自动云贝任务"
+          desc={`上次：${user.lastYunbei?.message?.slice(0, 40) ?? '从未执行'}${user.lastYunbei?.message && user.lastYunbei.message.length > 40 ? '…' : ''} · ${timeAgo(user.lastYunbei?.at)}`}
+          checked={user.settings.autoTasks}
+          onChange={(v) => patchSettings({ autoTasks: v })}
+        />
+
         {user.settings.autoScrobble && (
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-slate-400">每次打卡歌曲数（去重）</span>
@@ -160,7 +184,7 @@ export function AccountCard({
       </div>
 
       {/* manual actions */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-5 gap-2">
         <ActionBtn
           busy={busy === 'signin'}
           onClick={() => run('signin', () => api.signin(user.uid))}
@@ -178,6 +202,18 @@ export function AccountCard({
           onClick={() => run('refresh', () => api.refresh(user.uid))}
           icon={<RefreshCw className="h-4 w-4" />}
           label="刷新"
+        />
+        <ActionBtn
+          busy={busy === 'check'}
+          onClick={() => run('check', () => api.check(user.uid).then(r => ({ user: r.user, message: r.valid ? '登录态有效' : '登录态已过期，请重新扫码' })))}
+          icon={<ShieldCheck className="h-4 w-4" />}
+          label="检测"
+        />
+        <ActionBtn
+          busy={busy === 'tasks'}
+          onClick={() => run('tasks', () => api.yunbeiTasks(user.uid))}
+          icon={<Gift className="h-4 w-4" />}
+          label="云贝"
         />
       </div>
 

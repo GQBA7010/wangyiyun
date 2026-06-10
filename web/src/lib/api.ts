@@ -1,6 +1,7 @@
 export interface UserSettings {
   autoSignin: boolean
   autoScrobble: boolean
+  autoTasks: boolean
   scrobbleCount: number
 }
 
@@ -26,12 +27,14 @@ export interface User {
   settings: UserSettings
   lastSignin?: TaskResult
   lastScrobble?: TaskResult
+  lastYunbei?: TaskResult & { claimed?: number; total?: number }
   logs?: LogEntry[]
   playedCount?: number
+  status?: 'active' | 'expired' | 'unknown'
 }
 
 export interface Scheduler {
-  cron: string
+  cron?: string
   enabled: boolean
 }
 
@@ -71,6 +74,15 @@ export const api = {
     http<{ message: string; user: User }>(`/api/users/${uid}/scrobble`, { method: 'POST' }),
   refresh: (uid: number) =>
     http<{ user: User }>(`/api/users/${uid}/refresh`, { method: 'POST' }),
+  check: (uid: number) =>
+    http<{ valid: boolean; user: User }>(`/api/users/${uid}/check`, { method: 'POST' }),
+  yunbeiTasks: (uid: number) =>
+    http<{ message: string; claimed: number; total: number; user: User }>(
+      `/api/users/${uid}/tasks`,
+      { method: 'POST' },
+    ),
+  runAll: () =>
+    http<{ message: string }>('/api/run-all', { method: 'POST' }),
   getScheduler: () => http<{ scheduler: Scheduler }>('/api/scheduler'),
   setScheduler: (patch: Partial<Scheduler>) =>
     http<{ scheduler: Scheduler }>('/api/scheduler', {

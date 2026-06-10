@@ -9,6 +9,7 @@ const DATA_FILE = path.join(DATA_DIR, 'data.json')
 const DEFAULT_SETTINGS = {
   autoSignin: true,
   autoScrobble: true,
+  autoTasks: true,
   scrobbleCount: 300,
 }
 
@@ -45,27 +46,36 @@ export function save() {
   fs.writeFileSync(DATA_FILE, JSON.stringify(cache, null, 2))
 }
 
+/** Merge stored settings over defaults so schema additions apply to old users. */
+function withDefaults(user) {
+  if (!user) return user
+  user.settings = { ...DEFAULT_SETTINGS, ...user.settings }
+  return user
+}
+
 export function listUsers() {
-  return Object.values(load().users)
+  return Object.values(load().users).map(withDefaults)
 }
 
 export function getUser(uid) {
-  return load().users[uid]
+  return withDefaults(load().users[uid])
 }
 
 export function upsertUser(user) {
   const data = load()
-  const existing = data.users[user.uid]
-  data.users[user.uid] = {
+  const uid = Number(user.uid)
+  const existing = data.users[uid]
+  data.users[uid] = {
     settings: { ...DEFAULT_SETTINGS },
     logs: [],
     playedIds: [],
     ...existing,
     ...user,
+    uid,
     settings: { ...DEFAULT_SETTINGS, ...existing?.settings, ...user.settings },
   }
   save()
-  return data.users[user.uid]
+  return data.users[uid]
 }
 
 export function removeUser(uid) {

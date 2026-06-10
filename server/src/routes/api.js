@@ -9,8 +9,8 @@ import {
   updateSettings,
   upsertUser,
 } from '../store.js'
-import { applySchedule } from '../scheduler.js'
-import { refreshProfile, runScrobble, runSignin } from '../tasks.js'
+import { applySchedule, runAll } from '../scheduler.js'
+import { checkUserSession, refreshProfile, runScrobble, runSignin, runYunbeiTasks } from '../tasks.js'
 
 const router = Router()
 
@@ -18,7 +18,7 @@ const router = Router()
 function sanitize(user) {
   if (!user) return null
   const { cookie, playedIds, ...rest } = user
-  return { ...rest, playedCount: (playedIds || []).length }
+  return { ...rest, playedCount: (playedIds || []).length, status: user.status || 'unknown' }
 }
 
 const asyncH = (fn) => (req, res) =>
@@ -113,6 +113,22 @@ router.post(
   }),
 )
 
+router.post(
+  '/users/:uid/check',
+  asyncH(async (req, res) => {
+    const { valid } = await checkUserSession(req.params.uid)
+    res.json({ ok: true, valid, user: sanitize(getUser(req.params.uid)) })
+  }),
+)
+
+router.post(
+  '/users/:uid/tasks',
+  asyncH(async (req, res) => {
+    const result = await runYunbeiTasks(req.params.uid)
+    res.json({ ...result, user: sanitize(getUser(req.params.uid)) })
+  }),
+)
+
 // --- Scheduler ------------------------------------------------------------
 
 router.get('/scheduler', (_req, res) => {
@@ -124,5 +140,15 @@ router.post('/scheduler', (req, res) => {
   applySchedule()
   res.json({ ok: true, scheduler })
 })
+
+// --- Run all tasks now ----------------------------------------------------
+
+router.post(
+  '/run-all',
+  asyncH(async (_req, res) => {
+    runAll()
+    res.json({ ok: true, message: '已触发全部任务' })
+  }),
+)
 
 export default router

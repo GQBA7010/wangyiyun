@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, Plus, Sparkles, Users } from 'lucide-react'
+import { Activity, Play, Plus, Sparkles, Users } from 'lucide-react'
 import { api, type Scheduler, type User } from './lib/api'
 import { formatNumber } from './lib/format'
 import { AccountCard } from './components/AccountCard'
@@ -42,7 +42,7 @@ export default function App() {
 
   const upsertUser = (user: User) =>
     setUsers((list) => {
-      const idx = list.findIndex((x) => x.uid === user.uid)
+      const idx = list.findIndex((x) => Number(x.uid) === Number(user.uid))
       if (idx === -1) return [...list, user]
       const next = [...list]
       next[idx] = user
@@ -87,9 +87,27 @@ export default function App() {
               网易云音乐 · 自动签到 / 自动听歌打卡，一处开关，全程托管。
             </p>
           </div>
-          <button onClick={() => setShowLogin(true)} className="btn-primary self-start">
-            <Plus className="h-4 w-4" /> 添加账号
-          </button>
+          <div className="flex gap-2 self-start">
+            {users.length > 0 && (
+              <button
+                onClick={async () => {
+                  try {
+                    const { message } = await api.runAll()
+                    notify(message, true)
+                    setTimeout(load, 2000)
+                  } catch (e) {
+                    notify((e as Error).message, false)
+                  }
+                }}
+                className="btn-ghost"
+              >
+                <Play className="h-4 w-4" /> 立即执行
+              </button>
+            )}
+            <button onClick={() => setShowLogin(true)} className="btn-primary">
+              <Plus className="h-4 w-4" /> 添加账号
+            </button>
+          </div>
         </header>
 
         {/* stats */}
