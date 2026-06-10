@@ -3,6 +3,7 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import { z } from 'zod'
 import { accountInfo, qrCheck, qrKey, qrUrl } from '../netease/api.js'
 import {
+  countUserNeteaseAccounts,
   getAccountScheduler,
   getOwnedUser,
   getUser,
@@ -12,6 +13,7 @@ import {
   updateSettings,
   upsertUser,
 } from '../store.js'
+import { config } from '../config.js'
 import { runAll } from '../scheduler.js'
 import { requireAccount, requireAuth, requireOwnedUser } from '../security/auth.js'
 import {
@@ -96,6 +98,18 @@ router.get(
       const account = requireAccount(req)
       if (existing?.ownerId && existing.ownerId !== account.id) {
         return res.json({ ok: true, code: 803, error: '该网易云账号已被其他用户托管' })
+      }
+      // Per-user netease account limit (skip check if re-linking same uid).
+      if (
+        config.maxNeteasePerUser > 0 &&
+        !existing &&
+        countUserNeteaseAccounts(account.id) >= config.maxNeteasePerUser
+      ) {
+        return res.json({
+          ok: true,
+          code: 803,
+          error: `每个用户最多托管 ${config.maxNeteasePerUser} 个网易云账号`,
+        })
       }
       upsertUser({
         uid,

@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS accounts (
   password_hash  TEXT NOT NULL,
   created_at     INTEGER NOT NULL,
   last_login_at  INTEGER NOT NULL,
-  scheduler_json TEXT NOT NULL DEFAULT '{"enabled":false}'
+  scheduler_json TEXT NOT NULL DEFAULT '{"enabled":false}',
+  role           TEXT NOT NULL DEFAULT 'user',
+  disabled       INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS netease_users (
   uid       TEXT PRIMARY KEY,
@@ -41,7 +43,19 @@ export function getDb(): Database.Database {
   db.pragma('synchronous = NORMAL')
   db.pragma('foreign_keys = ON')
   db.exec(SCHEMA)
+  migrate(db)
   return db
+}
+
+/** Additive schema migrations for databases created by older versions. */
+function migrate(d: Database.Database): void {
+  const cols = (d.pragma('table_info(accounts)') as { name: string }[]).map((c) => c.name)
+  if (!cols.includes('role')) {
+    d.exec("ALTER TABLE accounts ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+  }
+  if (!cols.includes('disabled')) {
+    d.exec('ALTER TABLE accounts ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0')
+  }
 }
 
 export function dbFilePath(): string {

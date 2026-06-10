@@ -51,6 +51,7 @@ const EnvSchema = z.object({
   ALLOW_REGISTRATION: boolFromEnv(true),
   MIN_PASSWORD_LENGTH: intFromEnv(8),
   MAX_ACCOUNTS: intFromEnv(0), // 0 = unlimited
+  MAX_NETEASE_PER_USER: intFromEnv(5),
   BACKUP_INTERVAL_HOURS: intFromEnv(6),
   BACKUP_KEEP: intFromEnv(20),
 })
@@ -84,6 +85,7 @@ export const config = {
   allowRegistration: parsed.ALLOW_REGISTRATION,
   minPasswordLength: parsed.MIN_PASSWORD_LENGTH,
   maxAccounts: parsed.MAX_ACCOUNTS,
+  maxNeteasePerUser: parsed.MAX_NETEASE_PER_USER,
 
   // Periodic SQLite backups (0 hours disables the loop).
   backupIntervalMs: parsed.BACKUP_INTERVAL_HOURS * 60 * 60 * 1000,

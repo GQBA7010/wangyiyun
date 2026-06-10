@@ -51,6 +51,21 @@ export interface Account {
   createdAt: number
   lastLoginAt?: number
   scheduler?: Scheduler
+  role?: 'admin' | 'user'
+  disabled?: boolean
+}
+
+export interface AdminAccount extends Account {
+  neteaseCount: number
+}
+
+export interface AdminStats {
+  totalAccounts: number
+  activeAccounts: number
+  disabledAccounts: number
+  totalNeteaseUsers: number
+  maxAccounts: number
+  maxNeteasePerUser: number
 }
 
 /** Thrown for HTTP-level failures; carries the response status for callers. */
@@ -134,5 +149,29 @@ export const api = {
     http<{ scheduler: Scheduler }>('/api/scheduler', {
       method: 'POST',
       body: JSON.stringify(patch),
+    }),
+
+  // --- password ---
+  changePassword: (oldPassword: string, newPassword: string) =>
+    http<{ ok: boolean }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ oldPassword, newPassword }),
+    }),
+
+  // --- admin ---
+  adminStats: () => http<{ stats: AdminStats }>('/api/admin/stats'),
+  adminAccounts: () =>
+    http<{ accounts: AdminAccount[] }>('/api/admin/accounts'),
+  adminPatchAccount: (id: string, patch: { role?: string; disabled?: boolean }) =>
+    http<{ account: Account }>(`/api/admin/accounts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  adminDeleteAccount: (id: string) =>
+    http(`/api/admin/accounts/${id}`, { method: 'DELETE' }),
+  adminResetPassword: (id: string, newPassword: string) =>
+    http(`/api/admin/accounts/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
     }),
 }

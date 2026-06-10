@@ -10,6 +10,7 @@ import rateLimit from 'express-rate-limit'
 import { pinoHttp } from 'pino-http'
 import { config } from './config.js'
 import { logger } from './logger.js'
+import adminRouter from './routes/admin.js'
 import apiRouter from './routes/api.js'
 import authRouter from './routes/auth.js'
 import { applySchedule } from './scheduler.js'
@@ -78,6 +79,7 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.json({ ok: true, ts: Date.now() })
 })
 app.use('/api/auth', authRouter)
+app.use('/api/admin', adminRouter)
 app.use('/api', apiRouter)
 
 // Serve the built frontend (web/dist copied to server/public on build).

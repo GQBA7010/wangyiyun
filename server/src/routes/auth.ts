@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit'
 import { z } from 'zod'
 import { config } from '../config.js'
 import {
+  changePassword,
   countAccounts,
   createAccount,
   getAccountByUsername,
@@ -11,7 +12,12 @@ import {
   touchLogin,
 } from '../store.js'
 import { verifyPassword } from '../security/crypto.js'
-import { clearSession, currentAccount, setSession } from '../security/auth.js'
+import {
+  clearSession,
+  currentAccount,
+  requireAuth,
+  setSession,
+} from '../security/auth.js'
 import { createCaptcha, verifyCaptcha } from '../security/captcha.js'
 
 const router = Router()
@@ -115,10 +121,42 @@ router.post('/login', authLimiter, (req: Request, res: Response) => {
     res.status(401).json({ ok: false, error: '用户名或密码错误' })
     return
   }
+  if (account.disabled) {
+    res.status(403).json({ ok: false, error: '账号已被禁用，请联系管理员' })
+    return
+  }
 
   touchLogin(account.id)
   setSession(res, account.id)
   res.json({ ok: true, account: publicAccount(account) })
+})
+
+// Change password (authenticated users).
+const changePasswordSchema = z.object({
+  oldPassword: z.string().min(1),
+  newPassword: z.string().min(1),
+})
+
+router.post('/change-password', requireAuth, (req: Request, res: Response) => {
+  const result = changePasswordSchema.safeParse(req.body)
+  if (!result.success) {
+    res.status(400).json({ ok: false, error: '请输入当前密码和新密码' })
+    return
+  }
+  const { oldPassword, newPassword } = result.data
+  const account = req.account!
+  if (!verifyPassword(oldPassword, account.passwordHash)) {
+    res.status(401).json({ ok: false, error: '当前密码错误' })
+    return
+  }
+  if (newPassword.length < config.minPasswordLength) {
+    res
+      .status(400)
+      .json({ ok: false, error: `新密码至少需 ${config.minPasswordLength} 位` })
+    return
+  }
+  changePassword(account.id, newPassword)
+  res.json({ ok: true })
 })
 
 router.post('/logout', (_req: Request, res: Response) => {

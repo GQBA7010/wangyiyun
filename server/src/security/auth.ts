@@ -38,6 +38,11 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     res.status(401).json({ ok: false, error: '未登录或登录已过期' })
     return
   }
+  if (account.disabled) {
+    clearSession(res)
+    res.status(403).json({ ok: false, error: '账号已被禁用' })
+    return
+  }
   req.account = account
   next()
 }

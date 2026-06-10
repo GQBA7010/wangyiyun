@@ -11,6 +11,7 @@ import {
   randomSecret,
 } from './security/crypto.js'
 import type {
+  AccountRole,
   AppData,
   LogEntry,
   NeteaseUser,
@@ -63,6 +64,8 @@ interface AccountRow {
   created_at: number
   last_login_at: number
   scheduler_json: string
+  role: string
+  disabled: number
 }
 
 interface NeteaseUserRow {
@@ -130,6 +133,13 @@ export function load(): AppData {
       data.accounts = legacy.accounts ?? {}
       data.neteaseUsers = legacy.neteaseUsers ?? {}
       data.songPool = legacy.songPool ?? data.songPool
+      // Back-fill role/disabled for accounts created before v3 (SQLite migration).
+      let firstAccount = true
+      for (const acc of Object.values(data.accounts)) {
+        if (!acc.role) acc.role = firstAccount ? 'admin' : 'user'
+        if (acc.disabled === undefined) acc.disabled = false
+        firstAccount = false
+      }
       cache = data
       if (!config.sessionSecret && !cache.secret) cache.secret = randomSecret()
       const secret = config.sessionSecret || cache.secret
@@ -159,6 +169,8 @@ export function load(): AppData {
       createdAt: row.created_at,
       lastLoginAt: row.last_login_at,
       scheduler: JSON.parse(row.scheduler_json) as SchedulerState,
+      role: (row.role as AccountRole) || 'user',
+      disabled: !!row.disabled,
     }
   }
 
@@ -187,15 +199,17 @@ function persist(): void {
 
   const upsertAccount = db.prepare(
     `INSERT INTO accounts
-       (id, username, username_lower, password_hash, created_at, last_login_at, scheduler_json)
-     VALUES (@id, @username, @usernameLower, @passwordHash, @createdAt, @lastLoginAt, @scheduler)
+       (id, username, username_lower, password_hash, created_at, last_login_at, scheduler_json, role, disabled)
+     VALUES (@id, @username, @usernameLower, @passwordHash, @createdAt, @lastLoginAt, @scheduler, @role, @disabled)
      ON CONFLICT(id) DO UPDATE SET
        username = excluded.username,
        username_lower = excluded.username_lower,
        password_hash = excluded.password_hash,
        created_at = excluded.created_at,
        last_login_at = excluded.last_login_at,
-       scheduler_json = excluded.scheduler_json`,
+       scheduler_json = excluded.scheduler_json,
+       role = excluded.role,
+       disabled = excluded.disabled`,
   )
   const upsertNetease = db.prepare(
     `INSERT INTO netease_users (uid, owner_id, data_json)
@@ -224,6 +238,8 @@ function persist(): void {
         createdAt: acc.createdAt,
         lastLoginAt: acc.lastLoginAt,
         scheduler: JSON.stringify(acc.scheduler),
+        role: acc.role || 'user',
+        disabled: acc.disabled ? 1 : 0,
       })
     }
 
@@ -288,6 +304,8 @@ export function createAccount({
   const data = load()
   const id = randomId()
   const clean = String(username).trim()
+  // First ever account gets the admin role.
+  const isFirstAccount = Object.keys(data.accounts).length === 0
   const account: PlatformAccount = {
     id,
     username: clean,
@@ -296,6 +314,8 @@ export function createAccount({
     createdAt: Date.now(),
     lastLoginAt: Date.now(),
     scheduler: { enabled: false },
+    role: isFirstAccount ? 'admin' : 'user',
+    disabled: false,
   }
   data.accounts[id] = account
   save()
@@ -417,4 +437,58 @@ export function setSongPool(ids: number[]): SongPool {
   data.songPool = { ids, fetchedAt: Date.now() }
   save()
   return data.songPool
+}
+
+// ---------------------------------------------------------------------------
+// Admin helpers
+// ---------------------------------------------------------------------------
+
+/** List all platform accounts (admin view). */
+export function listAccounts(): PlatformAccount[] {
+  return Object.values(load().accounts)
+}
+
+/** Update the role/disabled fields for a platform account. */
+export function updateAccount(
+  id: string,
+  patch: { role?: AccountRole; disabled?: boolean },
+): PlatformAccount | null {
+  const acc = getAccountById(id)
+  if (!acc) return null
+  if (patch.role !== undefined) acc.role = patch.role
+  if (patch.disabled !== undefined) acc.disabled = patch.disabled
+  save()
+  return acc
+}
+
+/** Delete a platform account and all its hosted NetEase accounts. */
+export function deleteAccount(id: string): boolean {
+  const data = load()
+  if (!data.accounts[id]) return false
+  for (const [uid, user] of Object.entries(data.neteaseUsers)) {
+    if (user.ownerId === id) delete data.neteaseUsers[uid]
+  }
+  delete data.accounts[id]
+  save()
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Password change
+// ---------------------------------------------------------------------------
+
+export function changePassword(id: string, newPassword: string): boolean {
+  const acc = getAccountById(id)
+  if (!acc) return false
+  acc.passwordHash = hashPassword(newPassword)
+  save()
+  return true
+}
+
+// ---------------------------------------------------------------------------
+// Per-user NetEase account limit
+// ---------------------------------------------------------------------------
+
+export function countUserNeteaseAccounts(ownerId: string): number {
+  return listUsers(ownerId).length
 }

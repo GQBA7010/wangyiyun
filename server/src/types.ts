@@ -83,6 +83,8 @@ export interface SchedulerState {
   enabled: boolean
 }
 
+export type AccountRole = 'admin' | 'user'
+
 /** A platform user (the person who logs into the console). */
 export interface PlatformAccount {
   id: string
@@ -92,6 +94,10 @@ export interface PlatformAccount {
   createdAt: number
   lastLoginAt: number
   scheduler: SchedulerState
+  /** 'admin' gets access to the /api/admin endpoints. */
+  role: AccountRole
+  /** Disabled accounts cannot log in or use the API. */
+  disabled: boolean
 }
 
 /** A platform account with its password hash stripped, safe to send to clients. */

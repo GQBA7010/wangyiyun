@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Activity, LogOut, Play, Plus, Sparkles, Users } from 'lucide-react'
+import { Activity, Key, LogOut, Play, Plus, Settings, Shield, Sparkles, Users } from 'lucide-react'
 import { ApiError, api, type Account, type Scheduler, type User } from './lib/api'
 import { formatNumber } from './lib/format'
 import { AccountCard } from './components/AccountCard'
+import { AdminPage } from './components/AdminPage'
 import { AuthPage } from './components/AuthPage'
+import { ChangePasswordModal } from './components/ChangePasswordModal'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { QRLogin } from './components/QRLogin'
 import { SchedulerBar } from './components/SchedulerBar'
@@ -17,6 +19,8 @@ export default function App() {
   const [users, setUsers] = useState<User[]>([])
   const [scheduler, setScheduler] = useState<Scheduler>({ enabled: false })
   const [showLogin, setShowLogin] = useState(false)
+  const [showChangePw, setShowChangePw] = useState(false)
+  const [showAdmin, setShowAdmin] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [toasts, setToasts] = useState<ToastItem[]>([])
@@ -182,6 +186,18 @@ export default function App() {
             <button onClick={() => setShowLogin(true)} className="btn-primary">
               <Plus className="h-4 w-4" /> 添加账号
             </button>
+            <button onClick={() => setShowChangePw(true)} className="btn-ghost" title="修改密码">
+              <Key className="h-4 w-4" />
+            </button>
+            {account.role === 'admin' && (
+              <button
+                onClick={() => setShowAdmin((v) => !v)}
+                className={`btn-ghost ${showAdmin ? 'ring-2 ring-brand-300' : ''}`}
+                title="管理后台"
+              >
+                <Shield className="h-4 w-4" />
+              </button>
+            )}
             <button onClick={logout} className="btn-ghost" title="退出登录">
               <LogOut className="h-4 w-4" />
             </button>
@@ -248,6 +264,27 @@ export default function App() {
           Lumen · 仅供个人学习与自动化使用 · 数据按账号隔离，登录态加密存储于服务器
         </footer>
       </div>
+
+      {showAdmin && account.role === 'admin' && (
+        <div className="fixed inset-0 z-40 overflow-auto bg-mesh">
+          <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-extrabold text-slate-900">
+                <Shield className="mr-2 inline h-6 w-6 text-brand-600" />
+                管理后台
+              </h2>
+              <button onClick={() => setShowAdmin(false)} className="btn-ghost">
+                <Settings className="h-4 w-4" /> 返回控制台
+              </button>
+            </div>
+            <AdminPage currentAccountId={account.id} notify={notify} />
+          </div>
+        </div>
+      )}
+
+      {showChangePw && (
+        <ChangePasswordModal onClose={() => setShowChangePw(false)} notify={notify} />
+      )}
 
       {showLogin && (
         <QRLogin
