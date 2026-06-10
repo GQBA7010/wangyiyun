@@ -1,4 +1,4 @@
-import { getAccountScheduler, getUser, listUsers } from './store.js'
+import { getUser, listUsers } from './store.js'
 import { logger } from './logger.js'
 import {
   runPartnerEvaluate,
@@ -68,9 +68,11 @@ function isToday(ts: number | undefined): boolean {
   )
 }
 
-/** Whether a hosted account's owner has 24/7 auto-listen enabled. */
+/** Whether a hosted account has any automation feature enabled. */
 function ownerEnabled(user: NeteaseUser): boolean {
-  return !!(user.ownerId && getAccountScheduler(user.ownerId).enabled)
+  if (!user.ownerId) return false
+  const s = user.settings
+  return !!(s.autoSignin || s.autoScrobble || s.autoTasks || s.autoPartner)
 }
 
 /** Manual one-shot: run all enabled tasks once for a single owner's accounts. */
@@ -112,8 +114,8 @@ async function continuousLoop(): Promise<void> {
     }
     for (const user of users) {
       if (!ownerEnabled(user)) continue
-      // Random jitter per user: 0-5 min before starting their tasks
-      await sleep(Math.floor(Math.random() * 5 * 60 * 1000))
+      // Random jitter per user: 10-60s before starting their tasks
+      await sleep(10_000 + Math.floor(Math.random() * 50_000))
       busy = true
       try {
         const fresh = getUser(user.uid)
