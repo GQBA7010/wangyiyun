@@ -136,16 +136,17 @@ export async function refreshProfile(uid: number): Promise<NeteaseUser | undefin
   return user
 }
 
-/** Run daily sign-in (PC + mobile). Idempotent — already-signed is fine. */
+/** Run daily sign-in (Android + PC). Idempotent — already-signed is fine. */
 export async function runSignin(uid: number): Promise<TaskResult> {
   const user = getUser(uid)
   if (!user) return { ok: false, message: 'user not found' }
   const f = fp(user)
   const results: string[] = []
+  // type 0 = Android (3 points), type 1 = PC/web (2 points)
   for (const type of [0, 1]) {
     try {
       const res = await dailySignin(type, user.cookie, f)
-      const label = type === 0 ? 'PC' : '移动'
+      const label = type === 0 ? '移动端' : 'PC端'
       if (res.code === 200) {
         results.push(`${label}签到成功 +${res.point ?? 0}`)
       } else if (res.code === -2) {
@@ -154,9 +155,9 @@ export async function runSignin(uid: number): Promise<TaskResult> {
         results.push(`${label}签到: ${res.msg ?? res.message ?? res.code}`)
       }
     } catch (e) {
-      results.push(`${type === 0 ? 'PC' : '移动'}签到失败: ${errMessage(e)}`)
+      results.push(`${type === 0 ? '移动端' : 'PC端'}签到失败: ${errMessage(e)}`)
     }
-    // Realistic delay between PC & mobile sign-in (5-30s)
+    // Realistic delay between Android & PC sign-in (5-30s)
     await sleep(5000 + Math.floor(Math.random() * 25000))
   }
   const message = results.join('；')

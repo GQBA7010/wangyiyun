@@ -103,6 +103,45 @@ function fallbackIP(): string {
   return `116.25.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`
 }
 
+/**
+ * Build a rich cookie string that looks like a real NetEase client.
+ * The reference NeteaseCloudMusicApi enriches cookies with device info,
+ * os version, appver, etc. Without these, requests may be rejected.
+ */
+function buildRichCookie(cookie: string, fp?: DeviceFingerprint, osOverride?: string): string {
+  // Parse existing cookie into a map
+  const jar = new Map<string, string>()
+  for (const part of (cookie || '').split(';')) {
+    const eq = part.indexOf('=')
+    if (eq > 0) {
+      jar.set(part.slice(0, eq).trim(), part.slice(eq + 1).trim())
+    }
+  }
+
+  // Add device fingerprint cookies
+  const os = osOverride || fp?.os || 'pc'
+  const appver = fp?.appver || '3.1.17.204416'
+  const osver = fp?.osver || 'Microsoft-Windows-10-Professional-build-19045-64bit'
+  const channel = fp?.channel || 'netease'
+  const deviceId = fp?.deviceId || 'default_device_id'
+
+  jar.set('os', os)
+  jar.set('appver', appver)
+  jar.set('osver', osver)
+  jar.set('channel', channel)
+  jar.set('deviceId', deviceId)
+
+  // Standard browser cookies NetEase expects
+  if (!jar.has('__remember_me')) jar.set('__remember_me', 'true')
+  if (!jar.has('ntes_kaola_ad')) jar.set('ntes_kaola_ad', '1')
+  if (!jar.has('_ntes_nuid')) {
+    jar.set('_ntes_nuid', deviceId)
+    jar.set('_ntes_nnid', `${deviceId},${Date.now()}`)
+  }
+
+  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ')
+}
+
 /** Common axios config: proxy agent + timeout. */
 function baseAxiosOpts(): Partial<AxiosRequestConfig> {
   const opts: Partial<AxiosRequestConfig> = { timeout: 15000, validateStatus: () => true }
@@ -143,7 +182,9 @@ export async function weapiRequest<T = unknown>(
   payload: Record<string, unknown> = {},
   cookie = '',
   fp?: DeviceFingerprint,
+  osOverride?: string,
 ): Promise<WeapiResult<T>> {
+  const richCookie = buildRichCookie(cookie, fp, osOverride)
   const data = { ...payload, csrf_token: readCsrf(cookie) }
   const body = new URLSearchParams(
     weapi(data) as unknown as Record<string, string>,
@@ -157,7 +198,7 @@ export async function weapiRequest<T = unknown>(
       'User-Agent': ua,
       Referer: BASE,
       Origin: BASE,
-      Cookie: cookie || 'os=pc; appver=2.9.7',
+      Cookie: richCookie || 'os=pc; appver=3.1.17.204416',
       'X-Real-IP': ip,
       'X-Forwarded-For': ip,
     },
@@ -251,19 +292,22 @@ export async function userDetail(
 }
 
 /**
- * Daily sign-in. type 0 = PC/web, type 1 = mobile. Returns the raw response;
- * code 200 = success, -2 = already signed in today.
+ * Daily sign-in. type 0 = Android (3 points), type 1 = PC/web (2 points).
+ * Returns the raw response; code 200 = success, -2 = already signed in today.
+ * The `os` cookie must match the type: 'android' for type=0, 'pc' for type=1.
  */
 export async function dailySignin(
   type: number,
   cookie: string | undefined,
   fp?: DeviceFingerprint,
 ): Promise<SigninResponse> {
+  const osOverride = type === 0 ? 'android' : 'pc'
   const { data } = await weapiRequest<SigninResponse>(
     '/point/dailyTask',
     { type },
     cookie,
     fp,
+    osOverride,
   )
   return data
 }
@@ -305,7 +349,18 @@ export async function scrobble(
   const logs = JSON.stringify([
     {
       action: 'play',
-      json: { download, end, id, sourceId, time, type: 'song', wifi, source },
+      json: {
+        download,
+        end,
+        id,
+        sourceId,
+        time,
+        type: 'song',
+        wifi,
+        source,
+        mainsite: 1,
+        content: '',
+      },
     },
   ])
   const { data } = await weapiRequest<{ code?: number; data?: unknown }>(
@@ -392,13 +447,14 @@ async function mpGet<T>(
 ): Promise<T> {
   const ip = fp?.ip ?? fallbackIP()
   const ua = fp?.ua ?? DEFAULT_UA
+  const richCookie = buildRichCookie(cookie || '', fp)
   const res = await axios.get<T>(`${MP_BASE}${path}`, {
     ...baseAxiosOpts(),
     headers: {
       'User-Agent': ua,
       Referer: MP_REFERER,
       Origin: MP_ORIGIN,
-      Cookie: cookie || 'os=pc; appver=2.9.7',
+      Cookie: richCookie || 'os=pc; appver=3.1.17.204416',
       'X-Real-IP': ip,
       'X-Forwarded-For': ip,
     },
@@ -419,6 +475,7 @@ async function mpWeapiPost<T>(
   ).toString()
   const ip = fp?.ip ?? fallbackIP()
   const ua = fp?.ua ?? DEFAULT_UA
+  const richCookie = buildRichCookie(cookie || '', fp)
   const res = await axios.post<T>(`${MP_BASE}/weapi${path}?csrf_token=${csrf}`, body, {
     ...baseAxiosOpts(),
     headers: {
@@ -426,7 +483,7 @@ async function mpWeapiPost<T>(
       'User-Agent': ua,
       Referer: MP_REFERER,
       Origin: MP_ORIGIN,
-      Cookie: cookie || 'os=pc; appver=2.9.7',
+      Cookie: richCookie || 'os=pc; appver=3.1.17.204416',
       'X-Real-IP': ip,
       'X-Forwarded-For': ip,
     },

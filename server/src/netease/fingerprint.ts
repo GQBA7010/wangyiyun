@@ -320,6 +320,11 @@ function seededRand(seed: number): () => number {
 export interface DeviceFingerprint {
   ua: string
   ip: string
+  os: 'pc' | 'android'
+  appver: string
+  osver: string
+  channel: string
+  deviceId: string
 }
 
 /**
@@ -347,5 +352,19 @@ export function getFingerprint(uid: number, province?: number): DeviceFingerprin
   const d = 1 + Math.floor(rand() * 254)
   const ip = `${prefix.a}.${prefix.b}.${c}.${d}`
 
-  return { ua, ip }
+  // Stable device ID (hex string)
+  const hexChars = '0123456789abcdef'
+  let deviceId = ''
+  for (let i = 0; i < 32; i++) {
+    deviceId += hexChars[Math.floor(rand() * 16)]
+  }
+
+  // 70% pc, 30% android (deterministic per account)
+  const isAndroid = rand() < 0.3
+  const os = isAndroid ? 'android' as const : 'pc' as const
+  const appver = isAndroid ? '8.20.20.231215173437' : '3.1.17.204416'
+  const osver = isAndroid ? '14' : 'Microsoft-Windows-10-Professional-build-19045-64bit'
+  const channel = isAndroid ? 'xiaomi' : 'netease'
+
+  return { ua, ip, os, appver, osver, channel, deviceId }
 }
