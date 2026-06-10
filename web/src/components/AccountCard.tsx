@@ -204,7 +204,7 @@ export function AccountCard({
             <select
               value={user.settings.partnerScore}
               onChange={(e) => patchSettings({ partnerScore: Number(e.target.value) })}
-              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15"
+              className="cursor-pointer appearance-none rounded-lg border border-slate-200 bg-white bg-[length:1rem] bg-[right_0.5rem_center] bg-no-repeat py-1.5 pl-2.5 pr-8 text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%2F%3E%3C%2Fsvg%3E')]"
             >
               <option value={1}>偏低（1-2 分）</option>
               <option value={2}>中等（2-3 分）</option>

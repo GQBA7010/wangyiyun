@@ -8,6 +8,9 @@ export default defineConfig({
   build: {
     outDir: '../server/public',
     emptyOutDir: true,
+    // Transpile down so the bundle runs on older Safari/Chrome/Firefox too.
+    target: ['es2019', 'safari12', 'chrome79', 'firefox68', 'edge79'],
+    cssTarget: ['safari12', 'chrome79', 'firefox68', 'edge79'],
   },
   server: {
     port: 5173,

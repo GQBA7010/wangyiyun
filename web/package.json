@@ -15,6 +15,15 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
+  "browserslist": [
+    "defaults",
+    "iOS >= 12",
+    "Safari >= 12",
+    "Chrome >= 79",
+    "Firefox >= 68",
+    "Edge >= 79",
+    "not dead"
+  ],
   "devDependencies": {
     "@eslint/js": "^9.15.0",
     "@types/qrcode": "^1.5.5",

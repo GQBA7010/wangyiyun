@@ -63,7 +63,7 @@ export function AuthPage({ allowRegistration, onAuthed }: AuthPageProps) {
   }
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-mesh px-4 py-12 [padding-bottom:env(safe-area-inset-bottom)] [padding-top:env(safe-area-inset-top)]">
+    <div className="flex min-h-dvh items-center justify-center bg-mesh px-4 py-12 [padding-bottom:env(safe-area-inset-bottom)] [padding-top:env(safe-area-inset-top)]">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-gradient-to-br from-brand-500 to-accent-500 shadow-glow">

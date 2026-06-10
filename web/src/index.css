@@ -13,10 +13,30 @@
     height: 100%;
   }
 
+  html {
+    /* Stop iOS/old-WebKit from inflating text on orientation change. */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-slate-50 text-slate-600 antialiased;
     background-color: #f6f7fb;
     font-feature-settings: 'cv11', 'ss01';
+    /* Guard against accidental horizontal scroll on narrow / notched screens. */
+    overflow-x: hidden;
+    /* Remove the grey tap flash on iOS/Android when pressing buttons. */
+    -webkit-tap-highlight-color: transparent;
+    /* Smooth momentum scrolling on legacy iOS. */
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Make controls inherit the UI font and stay readable on every browser. */
+  input,
+  button,
+  select,
+  textarea {
+    font-family: inherit;
   }
 
   ::selection {
@@ -46,6 +66,13 @@
 }
 
 @layer components {
+  /* Full viewport height with a fallback for browsers without dvh
+     (iOS < 15.4, older Android WebView, legacy desktop). */
+  .min-h-dvh {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
   .glass {
     @apply rounded-2xl border border-slate-200/80 bg-white/85 shadow-soft backdrop-blur-xl;
   }
